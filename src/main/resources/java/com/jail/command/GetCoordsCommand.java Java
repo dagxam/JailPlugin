@@ -1,0 +1,27 @@
+package com.jail.command;
+
+import com.jail.JailManager;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+public class GetCoordsCommand implements CommandExecutor {
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage("Только для игроков!");
+            return true;
+        }
+
+        Player player = (Player) sender;
+        player.sendMessage(JailManager.colorize(
+                "&6X: &f" + (int) Math.floor(player.getLocation().getX())));
+        player.sendMessage(JailManager.colorize(
+                "&6Y: &f" + (int) Math.floor(player.getLocation().getY())));
+        player.sendMessage(JailManager.colorize(
+                "&6Z: &f" + (int) Math.floor(player.getLocation().getZ())));
+        return true;
+    }
+}
