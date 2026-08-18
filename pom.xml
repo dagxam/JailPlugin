@@ -29,11 +29,11 @@
     </repositories>
 
     <dependencies>
-        <!-- Подключаем API Paper версии 26.2 -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>26.2-R0.1-SNAPSHOT</version>
+            <!-- Возвращаем стабильную версию API, чтобы Maven смог её скачать -->
+            <version>1.20.2-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
