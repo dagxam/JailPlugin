@@ -1,58 +1,37 @@
-name: Сборка и Релиз JailPlugin
+name: Сборка JailPlugin
 
 on:
   push:
-    branches: [ "main", "master" ] # Срабатывает при пуше в main или master
     tags:
-      - 'v*' # Релиз будет создаваться только при пуше тега, например v1.0.0
-  pull_request:
-    branches: [ "main", "master" ]
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    # Выдаем боту права на создание релиза
     permissions:
-      contents: write 
+      contents: write
 
     steps:
-      # 1. Получаем код вашего плагина JailPlugin
-      - name: 📥 Скачивание репозитория
-        uses: actions/checkout@v4
+    - name: Скачивание репозитория
+      uses: actions/checkout@v4
 
-      # 2. Настраиваем Java (если JailPlugin написан на Java 17 или 8, измените '21' на '17' или '8')
-      - name: ☕ Установка JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21' 
-          cache: 'maven'
+    - name: Установка Java 26
+      uses: actions/setup-java@v4
+      with:
+        java-version: '26' # Указываем Java 26
+        distribution: 'temurin'
+        cache: maven
 
-      # 3. Собираем плагин
-      - name: 🛠️ Сборка плагина через Maven
-        run: mvn -B package --file pom.xml
+    - name: Сборка проекта
+      run: mvn -B clean package --file pom.xml
 
-      # 4. Сохраняем готовый .jar файл в Actions
-      - name: 📦 Сохранение .jar файла
-        uses: actions/upload-artifact@v4
-        with:
-          name: JailPlugin-Сборка
-          path: target/*.jar
-
-      # 5. Создаем Релиз (Сработает ТОЛЬКО если вы запушите тег v...)
-      - name: 🚀 Создание GitHub Релиза
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: target/*.jar
-          name: 🚀 Релиз JailPlugin ${{ github.ref_name }} # Название релиза
-          body: |
-            ## 👮‍♂️ Новая версия плагина JailPlugin!
-            
-            Версия: **${{ github.ref_name }}**
-            
-            Автоматическая сборка плагина завершена успешно. Готовый `.jar` файл прикреплен ниже в разделе **Assets**.
-            
-            ### 📝 Что нового:
-          generate_release_notes: true # GitHub автоматически добавит список коммитов
+    - name: Создание GitHub Релиза
+      uses: softprops/action-gh-release@v2
+      with:
+        name: Релиз ${{ github.ref_name }}
+        body: |
+          **JailPlugin обновлен до версии 26.2 (Java 26)**
+          Скачайте .jar файл ниже.
+        files: target/JailPlugin-*.jar
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
