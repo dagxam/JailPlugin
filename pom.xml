@@ -9,7 +9,7 @@
     <version>1.0</version>
 
     <properties>
-        <!-- Указываем новую версию Java 26 -->
+        <!-- Указываем версию Java 26, как требует ваш сервер -->
         <maven.compiler.source>26</maven.compiler.source>
         <maven.compiler.target>26</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -29,10 +29,10 @@
     </repositories>
 
     <dependencies>
+        <!-- Подключаем стабильное API Paper (1.20.2), чтобы Maven смог его скачать -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <!-- Возвращаем стабильную версию API, чтобы Maven смог её скачать -->
             <version>1.20.2-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
