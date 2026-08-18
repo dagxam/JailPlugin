@@ -1,9 +1,12 @@
-name: Сборка JailPlugin
+name: Сборка и Релиз JailPlugin
 
 on:
   push:
+    branches: [ "main", "master" ]
     tags:
       - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -18,20 +21,29 @@ jobs:
     - name: Установка Java 26
       uses: actions/setup-java@v4
       with:
-        java-version: '26' # Указываем Java 26
-        distribution: 'temurin'
+        java-version: '26'
+        distribution: 'oracle' # Используем Oracle, так как ваш сервер работает на нем
         cache: maven
 
-    - name: Сборка проекта
+    - name: Сборка проекта через Maven
       run: mvn -B clean package --file pom.xml
 
-    - name: Создание GitHub Релиза
+    - name: Сохранение скомпилированного плагина (Артефакт)
+      uses: actions/upload-artifact@v4
+      with:
+        name: JailPlugin-Build
+        path: target/JailPlugin-*.jar
+
+    - name: Создание GitHub Релиза (только при создании тега)
+      if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
       with:
         name: Релиз ${{ github.ref_name }}
         body: |
-          **JailPlugin обновлен до версии 26.2 (Java 26)**
-          Скачайте .jar файл ниже.
+          Автоматическая сборка плагина **JailPlugin** от **dagxam**.
+          
+          ✅ Сборка под Java 26 успешно завершена. Плагин готов к работе на сервере.
+          ⬇️ Скачайте готовый `.jar` файл в разделе **Assets** ниже.
         files: target/JailPlugin-*.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
