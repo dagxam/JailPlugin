@@ -4,13 +4,11 @@ import com.jail.JailManager;
 import com.jail.JailPlugin;
 
 import org.bukkit.Location;
-
 import org.bukkit.entity.Player;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-
 import org.bukkit.event.player.PlayerMoveEvent;
 
 
@@ -77,6 +75,36 @@ public final class MoveListener
 
 
         /*
+         * Если игрок просто поворачивает голову,
+         * координаты не изменились.
+         *
+         * В этом случае нет необходимости
+         * выполнять дополнительные проверки.
+         */
+
+        if (
+                event.getFrom().getX()
+                        ==
+                        event.getTo().getX()
+
+                        &&
+
+                event.getFrom().getY()
+                        ==
+                        event.getTo().getY()
+
+                        &&
+
+                event.getFrom().getZ()
+                        ==
+                        event.getTo().getZ()
+        ) {
+
+            return;
+        }
+
+
+        /*
          * Получаем центр камеры.
          */
 
@@ -88,7 +116,7 @@ public final class MoveListener
 
         /*
          * Если камера не найдена,
-         * не блокируем движение.
+         * движение не блокируем.
          */
 
         if (
@@ -107,12 +135,14 @@ public final class MoveListener
 
         /*
          * Если игрок каким-либо образом
-         * оказался в другом мире,
+         * пытается перейти в другой мир,
          * возвращаем его в камеру.
          */
 
         if (
                 to.getWorld() == null
+                        ||
+                cell.getWorld() == null
                         ||
                 !to.getWorld().equals(
                         cell.getWorld()
@@ -123,12 +153,24 @@ public final class MoveListener
                     cell
             );
 
+
+            player.sendActionBar(
+
+                    JailManager.component(
+
+                            manager.getMessage(
+                                    "movement-blocked"
+                            )
+                    )
+            );
+
+
             return;
         }
 
 
         /*
-         * Получаем максимальный радиус.
+         * Получаем максимальный радиус камеры.
          */
 
         double radius =
@@ -136,11 +178,9 @@ public final class MoveListener
 
 
         /*
-         * Сравниваем расстояние.
-         *
-         * Используем distanceSquared,
-         * чтобы не вычислять квадратный корень
-         * каждый тик движения.
+         * Используем квадрат расстояния,
+         * чтобы не выполнять лишний
+         * квадратный корень.
          */
 
         double maxDistanceSquared =
@@ -154,8 +194,7 @@ public final class MoveListener
 
 
         /*
-         * Если игрок вышел за пределы камеры,
-         * возвращаем его обратно.
+         * Игрок вышел за пределы камеры.
          */
 
         if (
@@ -165,7 +204,8 @@ public final class MoveListener
         ) {
 
             /*
-             * Отменяем движение.
+             * Возвращаем его
+             * в центр камеры.
              */
 
             event.setTo(
@@ -174,21 +214,20 @@ public final class MoveListener
 
 
             /*
-             * Показываем предупреждение.
+             * Показываем сообщение.
              *
-             * Чтобы сообщение не отправлялось
-             * десятки раз подряд при движении,
-             * оно показывается только при фактическом
-             * выходе за пределы.
+             * Текст находится в config.yml.
              */
 
             player.sendActionBar(
-        JailManager.component(
-                manager.getMessage(
-                        "movement-blocked"
-                )
-        )
-);
+
+                    JailManager.component(
+
+                            manager.getMessage(
+                                    "movement-blocked"
+                            )
+                    )
+            );
         }
     }
 }
