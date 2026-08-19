@@ -183,12 +183,12 @@ public final class MoveListener
              */
 
             player.sendActionBar(
-
-                    JailManager.component(
-
-                            "&c⛓ Вы не можете покинуть свою камеру!"
-                    )
-            );
+        JailManager.component(
+                manager.getMessage(
+                        "movement-blocked"
+                )
+        )
+);
         }
     }
 }
