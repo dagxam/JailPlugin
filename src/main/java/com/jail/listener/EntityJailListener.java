@@ -4,1022 +4,375 @@ import com.jail.EntityJailManager;
 import com.jail.JailManager;
 import com.jail.JailPlugin;
 
+import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-
 /**
- * Обработчик ручного заключения сущностей.
+ * Ручное заключение сущностей администратором.
  *
- * Игроки этой системой НЕ заключаются.
- *
- * Администратор:
- *
- * /prison entityjail
- *
- * затем нажимает ЛКМ по сущности.
- *
- * После выбора сущности открывается меню
- * выбора срока заключения.
+ * Игроки этой системой не заключаются.
+ * Игроки продолжают использовать существующую систему JailManager.
  */
-public final class EntityJailListener
-        implements Listener {
+public final class EntityJailListener implements Listener {
 
-
-    /**
-     * Главный класс плагина.
-     */
     private final JailPlugin plugin;
-
-
-    /**
-     * Менеджер заключённых сущностей.
-     */
     private final EntityJailManager entityJailManager;
 
+    private final Map<UUID, Boolean> selecting = new HashMap<>();
+    private final Map<UUID, UUID> menuTargets = new HashMap<>();
+    private final Map<UUID, UUID> customTimeTargets = new HashMap<>();
 
-    /**
-     * Игроки, находящиеся в режиме
-     * выбора сущности.
-     *
-     * UUID администратора -> true
-     */
-    private final Map<UUID, Boolean> selecting =
-            new HashMap<>();
+    private static final Component MENU_TITLE =
+            Component.text("⛓ Выбор срока тюрьмы");
 
-
-    /**
-     * Сущность, выбранная администратором.
-     *
-     * UUID администратора -> UUID сущности
-     */
-    private final Map<UUID, UUID> selectedEntities =
-            new HashMap<>();
-
-
-    /**
-     * Меню выбора срока.
-     *
-     * UUID администратора -> UUID сущности
-     */
-    private final Map<UUID, UUID> menuTargets =
-            new HashMap<>();
-
-
-    /**
-     * Название меню.
-     */
-    private static final String MENU_TITLE =
-            "§8⛓ Выбор срока тюрьмы";
-
-
-    /**
-     * Создаёт listener.
-     *
-     * @param plugin главный класс плагина
-     * @param entityJailManager менеджер сущностей
-     */
     public EntityJailListener(
             JailPlugin plugin,
             EntityJailManager entityJailManager
     ) {
-
-        this.plugin =
-                plugin;
-
-        this.entityJailManager =
-                entityJailManager;
+        this.plugin = plugin;
+        this.entityJailManager = entityJailManager;
     }
 
+    public void startSelection(Player player) {
+        if (player == null) return;
 
-    /**
-     * Включает режим выбора сущности
-     * для администратора.
-     *
-     * @param player администратор
-     */
-    public void startSelection(
-            Player player
-    ) {
-
-        if (
-                player == null
-        ) {
-
+        if (!player.hasPermission("prison.entityjail")) {
+            player.sendMessage(JailManager.component(
+                    "&cУ вас нет права prison.entityjail."
+            ));
             return;
         }
 
+        selecting.put(player.getUniqueId(), true);
+        menuTargets.remove(player.getUniqueId());
+        customTimeTargets.remove(player.getUniqueId());
 
-        if (
-                !player.hasPermission(
-                        "prison.entityjail"
-                )
-        ) {
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "entity-no-permission"
-                                    )
-                    )
-            );
-
-            return;
-        }
-
-
-        selecting.put(
-                player.getUniqueId(),
-                true
-        );
-
-
-        selectedEntities.remove(
-                player.getUniqueId()
-        );
-
-
-        player.sendMessage("");
-
-        player.sendMessage(
-
-                JailManager.component(
-
-                        plugin
-                                .getJailManager()
-                                .getMessage(
-                                        "entity-select-start"
-                                )
-                )
-        );
-
-        player.sendMessage("");
+        player.sendMessage(JailManager.component(
+                "&a✓ Режим выбора сущности включён."
+        ));
+        player.sendMessage(JailManager.component(
+                "&7Нажмите &fПКМ &7по живой сущности."
+        ));
+        player.sendMessage(JailManager.component(
+                "&7Игроки через эту систему не заключаются."
+        ));
     }
 
+    public void stopSelection(Player player) {
+        if (player == null) return;
 
-    /**
-     * Выключает режим выбора сущности.
-     *
-     * @param player администратор
-     */
-    public void stopSelection(
-            Player player
-    ) {
+        UUID uuid = player.getUniqueId();
+        selecting.remove(uuid);
+        menuTargets.remove(uuid);
+        customTimeTargets.remove(uuid);
 
-        if (
-                player == null
-        ) {
-
-            return;
-        }
-
-
-        UUID uuid =
-                player.getUniqueId();
-
-
-        selecting.remove(
-                uuid
-        );
-
-
-        selectedEntities.remove(
-                uuid
-        );
-
-
-        menuTargets.remove(
-                uuid
-        );
-
-
-        player.sendMessage(
-
-                JailManager.component(
-
-                        plugin
-                                .getJailManager()
-                                .getMessage(
-                                        "entity-select-stop"
-                                )
-                )
-        );
+        player.sendMessage(JailManager.component(
+                "&eРежим выбора сущности выключен."
+        ));
     }
 
-
-    /**
-     * Проверяет, находится ли игрок
-     * в режиме выбора сущности.
-     *
-     * @param player игрок
-     * @return true, если режим активен
-     */
-    public boolean isSelecting(
-            Player player
-    ) {
-
-        return player != null
-                &&
-                selecting.containsKey(
-                        player.getUniqueId()
-                );
+    public boolean isSelecting(Player player) {
+        return player != null && selecting.containsKey(player.getUniqueId());
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityInteract(PlayerInteractEntityEvent event) {
+        Player player = event.getPlayer();
 
-    /**
-     * ЛКМ по сущности.
-     *
-     * После нажатия открываем меню
-     * выбора срока.
-     */
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onEntityInteract(
-            PlayerInteractEntityEvent event
-    ) {
+        if (!isSelecting(player)) return;
 
-        Player player =
-                event.getPlayer();
-
-
-        /*
-         * Нас интересуют только игроки,
-         * которые включили режим выбора.
-         */
-
-        if (
-                !isSelecting(
-                        player
-                )
-        ) {
-
+        if (!player.hasPermission("prison.entityjail")) {
+            stopSelection(player);
             return;
         }
 
+        Entity entity = event.getRightClicked();
+        event.setCancelled(true);
 
-        /*
-         * Проверяем разрешение ещё раз.
-         */
-
-        if (
-                !player.hasPermission(
-                        "prison.entityjail"
-                )
-        ) {
-
-            stopSelection(
-                    player
-            );
-
+        if (entity instanceof Player) {
+            player.sendMessage(JailManager.component(
+                    "&cИгроков через ручное заключение сущностей сажать нельзя."
+            ));
             return;
         }
 
-
-        /*
-         * Игроков через эту систему
-         * не заключаем.
-         */
-
-        Entity entity =
-                event.getRightClicked();
-
-
-        if (
-                entity instanceof Player
-        ) {
-
-            event.setCancelled(
-                    true
-            );
-
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "entity-player-not-allowed"
-                                    )
-                    )
-            );
-
-
+        if (!(entity instanceof LivingEntity)) {
+            player.sendMessage(JailManager.component(
+                    "&cЭту сущность нельзя заключить в тюрьму."
+            ));
             return;
         }
 
+        openTimeMenu(player, entity);
+    }
 
-        /*
-         * Разрешаем только живые сущности.
-         */
-
-        if (
-                !(entity instanceof org.bukkit.entity.LivingEntity)
-        ) {
-
-            event.setCancelled(
-                    true
-            );
-
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "entity-not-living"
-                                    )
-                    )
-            );
-
-
-            return;
-        }
-
-
-        /*
-         * Сохраняем выбранную сущность.
-         */
-
-        selectedEntities.put(
-                player.getUniqueId(),
-                entity.getUniqueId()
+    private void openTimeMenu(Player player, Entity entity) {
+        Inventory inventory = Bukkit.createInventory(
+                null,
+                27,
+                MENU_TITLE
         );
 
+        inventory.setItem(10, createItem(
+                Material.CLOCK,
+                "§e1 минута",
+                "§7Заключить на 1 минуту."
+        ));
+        inventory.setItem(11, createItem(
+                Material.CLOCK,
+                "§e5 минут",
+                "§7Заключить на 5 минут."
+        ));
+        inventory.setItem(12, createItem(
+                Material.CLOCK,
+                "§e10 минут",
+                "§7Заключить на 10 минут."
+        ));
+        inventory.setItem(14, createItem(
+                Material.CLOCK,
+                "§e30 минут",
+                "§7Заключить на 30 минут."
+        ));
+        inventory.setItem(15, createItem(
+                Material.CLOCK,
+                "§e1 час",
+                "§7Заключить на 1 час."
+        ));
+        inventory.setItem(13, createItem(
+                Material.WRITABLE_BOOK,
+                "§bСвой срок",
+                "§7Введите количество минут в чат."
+        ));
+        inventory.setItem(22, createItem(
+                Material.BARRIER,
+                "§cОтмена",
+                "§7Отменить заключение."
+        ));
 
-        /*
-         * Открываем меню.
-         */
+        menuTargets.put(player.getUniqueId(), entity.getUniqueId());
+        player.openInventory(inventory);
+    }
 
-        event.setCancelled(
-                true
-        );
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!event.getView().title().equals(MENU_TITLE)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
 
+        event.setCancelled(true);
 
-        openTimeMenu(
-                player,
-                entity
+        UUID entityUuid = menuTargets.get(player.getUniqueId());
+        if (entityUuid == null) {
+            player.closeInventory();
+            return;
+        }
+
+        int slot = event.getRawSlot();
+
+        if (slot == 22) {
+            cancelMenu(player);
+            return;
+        }
+
+        if (slot == 13) {
+            UUID uuid = player.getUniqueId();
+            customTimeTargets.put(uuid, entityUuid);
+            menuTargets.remove(uuid);
+            player.closeInventory();
+
+            player.sendMessage(JailManager.component(
+                    "&bВведите срок в минутах в чат. &7Например: &f15"
+            ));
+            player.sendMessage(JailManager.component(
+                    "&7Для отмены напишите: &fcancel"
+            ));
+            return;
+        }
+
+        int seconds = switch (slot) {
+            case 10 -> 60;
+            case 11 -> 300;
+            case 12 -> 600;
+            case 14 -> 1800;
+            case 15 -> 3600;
+            default -> 0;
+        };
+
+        if (seconds > 0) {
+            jailSelectedEntity(player, entityUuid, seconds);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCustomTimeChat(AsyncChatEvent event) {
+        Player player = event.getPlayer();
+        UUID playerUuid = player.getUniqueId();
+        UUID entityUuid = customTimeTargets.get(playerUuid);
+
+        if (entityUuid == null) return;
+
+        event.setCancelled(true);
+
+        String input = PlainTextComponentSerializer.plainText()
+                .serialize(event.message())
+                .trim();
+
+        if (input.equalsIgnoreCase("cancel")) {
+            customTimeTargets.remove(playerUuid);
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    player.sendMessage(JailManager.component(
+                            "&eВвод срока отменён."
+                    ))
+            );
+            return;
+        }
+
+        int minutes;
+        try {
+            minutes = Integer.parseInt(input);
+        } catch (NumberFormatException exception) {
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    player.sendMessage(JailManager.component(
+                            "&cВведите целое положительное число минут или &fcancel&c."
+                    ))
+            );
+            return;
+        }
+
+        if (minutes < 1 || minutes > 10080) {
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    player.sendMessage(JailManager.component(
+                            "&cСрок должен быть от 1 до 10080 минут."
+                    ))
+            );
+            return;
+        }
+
+        customTimeTargets.remove(playerUuid);
+        int seconds = minutes * 60;
+
+        Bukkit.getScheduler().runTask(plugin, () ->
+                jailSelectedEntity(player, entityUuid, seconds)
         );
     }
 
-
-    /**
-     * Открывает меню выбора срока.
-     *
-     * @param player администратор
-     * @param entity выбранная сущность
-     */
-    private void openTimeMenu(
+    private void jailSelectedEntity(
             Player player,
-            Entity entity
+            UUID entityUuid,
+            int seconds
     ) {
+        Entity entity = findEntity(entityUuid);
 
-        Inventory inventory =
-                Bukkit.createInventory(
-                        null,
-                        27,
-                        MENU_TITLE
-                );
+        if (entity == null || entity.isDead()) {
+            player.sendMessage(JailManager.component(
+                    "&cСущность больше не найдена."
+            ));
+            return;
+        }
 
+        if (entity instanceof Player || !(entity instanceof LivingEntity)) {
+            player.sendMessage(JailManager.component(
+                    "&cЭту сущность нельзя заключить в тюрьму."
+            ));
+            return;
+        }
 
-        /*
-         * 1 минута.
-         */
+        Location cell = plugin.getJailManager().getRandomCell();
 
-        inventory.setItem(
-                10,
-                createItem(
-                        Material.CLOCK,
-                        "§e1 минута",
-                        "§7Заключить на 1 минуту."
-                )
-        );
+        if (cell == null) {
+            player.sendMessage(JailManager.component(
+                    plugin.getJailManager().getMessage("no-cells")
+            ));
+            return;
+        }
 
+        if (!entityJailManager.jailEntity(entity, seconds, cell)) {
+            player.sendMessage(JailManager.component(
+                    "&cНе удалось заключить сущность в тюрьму."
+            ));
+            return;
+        }
 
-        /*
-         * 5 минут.
-         */
+        selecting.remove(player.getUniqueId());
+        menuTargets.remove(player.getUniqueId());
 
-        inventory.setItem(
-                11,
-                createItem(
-                        Material.CLOCK,
-                        "§e5 минут",
-                        "§7Заключить на 5 минут."
-                )
-        );
-
-
-        /*
-         * 10 минут.
-         */
-
-        inventory.setItem(
-                12,
-                createItem(
-                        Material.CLOCK,
-                        "§e10 минут",
-                        "§7Заключить на 10 минут."
-                )
-        );
-
-
-        /*
-         * 30 минут.
-         */
-
-        inventory.setItem(
-                14,
-                createItem(
-                        Material.CLOCK,
-                        "§e30 минут",
-                        "§7Заключить на 30 минут."
-                )
-        );
-
-
-        /*
-         * 1 час.
-         */
-
-        inventory.setItem(
-                15,
-                createItem(
-                        Material.CLOCK,
-                        "§e1 час",
-                        "§7Заключить на 1 час."
-                )
-        );
-
-
-        /*
-         * Свой срок.
-         *
-         * Пока кнопка информирует игрока,
-         * что ввод своего срока будет добавлен
-         * следующим этапом.
-         */
-
-        inventory.setItem(
-                13,
-                createItem(
-                        Material.WRITABLE_BOOK,
-                        "§bСвой срок",
-                        "§7Ввести собственный срок."
-                )
-        );
-
-
-        /*
-         * Отмена.
-         */
-
-        inventory.setItem(
-                22,
-                createItem(
-                        Material.BARRIER,
-                        "§cОтмена",
-                        "§7Отменить заключение."
-                )
-        );
-
-
-        menuTargets.put(
-                player.getUniqueId(),
-                entity.getUniqueId()
-        );
-
-
-        player.openInventory(
-                inventory
-        );
+        player.sendMessage(JailManager.component(
+                "&a✓ Сущность &f" + entity.getType().name()
+                        + " &aзаключена на &f"
+                        + plugin.getJailManager().formatTimeWords(seconds)
+                        + "&a."
+        ));
     }
 
-
-    /**
-     * Обрабатывает нажатия в меню.
-     */
-    @EventHandler(
-            priority = EventPriority.HIGHEST
-    )
-    public void onInventoryClick(
-            InventoryClickEvent event
-    ) {
-
-        if (
-                !MENU_TITLE.equals(
-                        event.getView().getTitle()
-                )
-        ) {
-
-            return;
-        }
-
-
-        if (
-                !(event.getWhoClicked()
-                        instanceof Player player)
-        ) {
-
-            return;
-        }
-
-
-        event.setCancelled(
-                true
-        );
-
-
-        UUID entityUuid =
-                menuTargets.get(
-                        player.getUniqueId()
-                );
-
-
-        if (
-                entityUuid == null
-        ) {
-
-            player.closeInventory();
-
-            return;
-        }
-
-
-        int slot =
-                event.getRawSlot();
-
-
-        /*
-         * Нажата кнопка отмены.
-         */
-
-        if (
-                slot == 22
-        ) {
-
-            cancelMenu(
-                    player
-            );
-
-            return;
-        }
-
-
-        /*
-         * Получаем срок
-         * в зависимости от слота.
-         */
-
-        int seconds;
-
-
-        switch (
-                slot
-        ) {
-
-            case 10 -> seconds = 60;
-
-            case 11 -> seconds = 300;
-
-            case 12 -> seconds = 600;
-
-            case 14 -> seconds = 1800;
-
-            case 15 -> seconds = 3600;
-
-
-            /*
-             * Свой срок пока оставляем
-             * отдельным следующим этапом.
-             */
-
-            case 13 -> {
-
-                player.sendMessage(
-
-                        JailManager.component(
-
-                                plugin
-                                        .getJailManager()
-                                        .getMessage(
-                                                "entity-custom-time-not-ready"
-                                        )
-                        )
-                );
-
-                return;
-            }
-
-
-            default -> {
-                return;
-            }
-        }
-
-
-        /*
-         * Находим сущность.
-         */
-
-        Entity entity =
-                findEntity(
-                        entityUuid
-                );
-
-
-        if (
-                entity == null
-                        ||
-                entity.isDead()
-        ) {
-
-            player.closeInventory();
-
-
-            menuTargets.remove(
-                    player.getUniqueId()
-            );
-
-
-            selectedEntities.remove(
-                    player.getUniqueId()
-            );
-
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "entity-not-found"
-                                    )
-                    )
-            );
-
-
-            return;
-        }
-
-
-        /*
-         * Игроки всё ещё запрещены.
-         */
-
-        if (
-                entity instanceof Player
-        ) {
-
-            player.closeInventory();
-
-            return;
-        }
-
-
-        /*
-         * Получаем случайную камеру
-         * через существующий JailManager.
-         */
-
-        Location cell =
-                plugin
-                        .getJailManager()
-                        .getRandomCell();
-
-
-        if (
-                cell == null
-        ) {
-
-            player.closeInventory();
-
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "no-cells"
-                                    )
-                    )
-            );
-
-
-            return;
-        }
-
-
-        /*
-         * Заключаем сущность.
-         */
-
-        boolean success =
-                entityJailManager.jailEntity(
-                        entity,
-                        seconds,
-                        cell
-                );
-
-
-        player.closeInventory();
-
-
-        menuTargets.remove(
-                player.getUniqueId()
-        );
-
-
-        selectedEntities.remove(
-                player.getUniqueId()
-        );
-
-
-        /*
-         * Если не получилось.
-         */
-
-        if (
-                !success
-        ) {
-
-            player.sendMessage(
-
-                    JailManager.component(
-
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "entity-jail-failed"
-                                    )
-                    )
-            );
-
-
-            return;
-        }
-
-
-        /*
-         * Сообщаем администратору.
-         */
-
-        player.sendMessage("");
-
-        player.sendMessage(
-
-                JailManager.component(
-
-                        plugin
-                                .getJailManager()
-                                .getMessage(
-                                        "entity-jailed"
-                                )
-
-                                .replace(
-                                        "%entity%",
-                                        entity
-                                                .getType()
-                                                .name()
-                                )
-
-                                .replace(
-                                        "%time%",
-                                        plugin
-                                                .getJailManager()
-                                                .formatTimeWords(
-                                                        seconds
-                                                )
-                                )
-                )
-        );
-
-        player.sendMessage("");
-    }
-
-
-    /**
-     * Обработка закрытия меню.
-     *
-     * Если игрок просто закрыл GUI,
-     * выбор отменяется.
-     */
     @EventHandler
-    public void onInventoryClose(
-            InventoryCloseEvent event
-    ) {
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!event.getView().title().equals(MENU_TITLE)) return;
 
-        if (
-                !MENU_TITLE.equals(
-                        event.getView().getTitle()
-                )
-        ) {
-
-            return;
+        if (event.getPlayer() instanceof Player player) {
+            menuTargets.remove(player.getUniqueId());
         }
-
-
-        if (
-                !(event.getPlayer()
-                        instanceof Player player)
-        ) {
-
-            return;
-        }
-
-
-        UUID uuid =
-                player.getUniqueId();
-
-
-        menuTargets.remove(
-                uuid
-        );
-
-
-        selectedEntities.remove(
-                uuid
-        );
     }
 
-
-    /**
-     * Если заключённая сущность погибла,
-     * её запись удаляем.
-     */
     @EventHandler
-    public void onEntityDeath(
-            EntityDeathEvent event
-    ) {
-
-        Entity entity =
-                event.getEntity();
-
-
-        UUID uuid =
-                entity.getUniqueId();
-
-
-        if (
-                entityJailManager.isJailed(
-                        uuid
-                )
-        ) {
-
-            /*
-             * Срок больше не имеет смысла,
-             * потому что сущность погибла.
-             */
-
-            entityJailManager.releaseEntity(
-                    uuid
-            );
-        }
+    public void onEntityDeath(EntityDeathEvent event) {
+        entityJailManager.releaseEntity(event.getEntity().getUniqueId());
     }
 
-
-    /**
-     * Отмена текущего выбора.
-     */
-    private void cancelMenu(
-            Player player
-    ) {
-
-        UUID uuid =
-                player.getUniqueId();
-
-
-        menuTargets.remove(
-                uuid
-        );
-
-
-        selectedEntities.remove(
-                uuid
-        );
-
-
+    private void cancelMenu(Player player) {
+        menuTargets.remove(player.getUniqueId());
         player.closeInventory();
-
-
-        player.sendMessage(
-
-                JailManager.component(
-
-                        plugin
-                                .getJailManager()
-                                .getMessage(
-                                        "entity-jail-cancelled"
-                                )
-                )
-        );
+        player.sendMessage(JailManager.component(
+                "&eЗаключение отменено."
+        ));
     }
 
-
-    /**
-     * Создаёт предмет меню.
-     */
     private ItemStack createItem(
             Material material,
             String name,
             String lore
     ) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
 
-        ItemStack item =
-                new ItemStack(
-                        material
-                );
-
-
-        ItemMeta meta =
-                item.getItemMeta();
-
-
-        if (
-                meta != null
-        ) {
-
-            meta.setDisplayName(
-                    name
-            );
-
-
-            meta.setLore(
-                    java.util.List.of(
-                            lore
-                    )
-            );
-
-
-            item.setItemMeta(
-                    meta
-            );
+        if (meta != null) {
+            meta.displayName(Component.text(name));
+            meta.lore(List.of(Component.text(lore)));
+            item.setItemMeta(meta);
         }
-
 
         return item;
     }
 
+    private Entity findEntity(UUID uuid) {
+        if (uuid == null) return null;
 
-    /**
-     * Ищет сущность во всех загруженных мирах.
-     */
-    private Entity findEntity(
-            UUID uuid
-    ) {
-
-        for (
-                org.bukkit.World world :
-                Bukkit.getWorlds()
-        ) {
-
-            Entity entity =
-                    world.getEntity(
-                            uuid
-                    );
-
-
-            if (
-                    entity != null
-            ) {
-
-                return entity;
-            }
+        for (var world : Bukkit.getWorlds()) {
+            Entity entity = world.getEntity(uuid);
+            if (entity != null) return entity;
         }
 
-
-        return null;
+        return Bukkit.getEntity(uuid);
     }
 }
