@@ -3,10 +3,11 @@ package com.jail;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Entity;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,903 +17,359 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-
 /**
- * Отдельный менеджер тюремного заключения сущностей.
+ * Отдельный менеджер заключённых сущностей.
  *
- * ВАЖНО:
+ * Игроки здесь не хранятся.
+ * Их продолжает обслуживать JailManager.
  *
- * Игроки здесь НЕ хранятся.
- *
- * Существующая система игроков продолжает
- * работать через JailManager.
- *
- * Этот класс отвечает только за сущности,
- * отличные от Player.
+ * Срок хранится как абсолютное время окончания,
+ * поэтому перезапуск сервера не обнуляет и не замораживает срок.
  */
 public final class EntityJailManager {
 
-
-    /**
-     * Главный класс плагина.
-     */
     private final JailPlugin plugin;
-
-
-    /**
-     * Файл с заключёнными сущностями.
-     */
     private final File dataFile;
 
+    private final Map<UUID, Long> expiresAt = new HashMap<>();
+    private final Map<UUID, Location> entityCells = new HashMap<>();
 
-    /**
-     * Оставшееся время сущностей.
-     *
-     * UUID сущности -> секунды.
-     */
-    private final Map<UUID, Integer> entityTimes =
-            new HashMap<>();
-
-
-    /**
-     * Камеры сущностей.
-     *
-     * UUID сущности -> Location камеры.
-     */
-    private final Map<UUID, Location> entityCells =
-            new HashMap<>();
-
-
-    /**
-     * Создаёт менеджер сущностей.
-     *
-     * @param plugin главный класс плагина
-     */
-    public EntityJailManager(
-            JailPlugin plugin
-    ) {
-
+    public EntityJailManager(JailPlugin plugin) {
         this.plugin = plugin;
-
-
-        this.dataFile =
-                new File(
-                        plugin.getDataFolder(),
-                        "entity-prisoners.yml"
-                );
+        this.dataFile = new File(
+                plugin.getDataFolder(),
+                "entity-prisoners.yml"
+        );
     }
 
-
-    /**
-     * Загружает заключённых сущностей
-     * из entity-prisoners.yml.
-     *
-     * Если сущность больше не существует,
-     * её запись будет удалена.
-     */
     public void loadEntities() {
-
-        entityTimes.clear();
-
+        expiresAt.clear();
         entityCells.clear();
 
-
-        if (
-                !dataFile.exists()
-        ) {
-
+        if (!dataFile.exists()) {
             return;
         }
-
 
         FileConfiguration data =
-                YamlConfiguration.loadConfiguration(
-                        dataFile
-                );
+                YamlConfiguration.loadConfiguration(dataFile);
 
-
-        if (
-                !data.isConfigurationSection(
-                        "entities"
-                )
-        ) {
-
+        if (!data.isConfigurationSection("entities")) {
             return;
         }
 
-
-        List<UUID> missingEntities =
-                new ArrayList<>();
-
-
-        for (
-                String uuidText :
-                data
-                        .getConfigurationSection(
-                                "entities"
-                        )
-                        .getKeys(false)
-        ) {
+        for (String uuidText :
+                data.getConfigurationSection("entities").getKeys(false)) {
 
             UUID uuid;
 
-
             try {
-
-                uuid =
-                        UUID.fromString(
-                                uuidText
-                        );
-
-            } catch (
-                    IllegalArgumentException exception
-            ) {
-
+                uuid = UUID.fromString(uuidText);
+            } catch (IllegalArgumentException exception) {
                 plugin.getLogger().warning(
-                        "Некорректный UUID сущности в entity-prisoners.yml: "
-                                +
-                                uuidText
+                        "Некорректный UUID сущности: " + uuidText
                 );
-
                 continue;
             }
 
+            String path = "entities." + uuidText;
 
-            String path =
-                    "entities." +
-                            uuidText;
-
-
-            int time =
-                    data.getInt(
-                            path + ".time",
-                            0
-                    );
-
-
-            if (
-                    time <= 0
-            ) {
-
-                continue;
-            }
-
-
-            Location cell =
-                    readLocation(
-                            data,
-                            path
-                    );
-
-
-            if (
-                    cell == null
-            ) {
-
-                plugin.getLogger().warning(
-                        "Не удалось восстановить камеру сущности "
-                                +
-                                uuidText
-                );
-
-                continue;
-            }
-
+            long expiry = data.getLong(
+                    path + ".expires-at",
+                    0L
+            );
 
             /*
-             * Проверяем, существует ли сама сущность.
+             * Совместимость со старым форматом,
+             * где хранилось количество секунд.
              */
-
-            Entity entity =
-                    findEntity(
-                            uuid
-                    );
-
-
-            if (
-                    entity == null
-            ) {
-
-                missingEntities.add(
-                        uuid
+            if (expiry <= 0L) {
+                int oldSeconds = data.getInt(
+                        path + ".time",
+                        0
                 );
 
-                continue;
+                if (oldSeconds > 0) {
+                    expiry = System.currentTimeMillis()
+                            + oldSeconds * 1000L;
+                }
             }
 
+            Location cell = readLocation(data, path);
+
+            if (expiry <= 0L || cell == null) {
+                continue;
+            }
 
             /*
-             * Игроки никогда не должны попадать
-             * в этот менеджер.
+             * Не удаляем запись, если сущность сейчас не загружена.
+             * После загрузки мира/чанка UUID снова будет найден.
              */
-
-            if (
-                    entity instanceof org.bukkit.entity.Player
-            ) {
-
-                missingEntities.add(
-                        uuid
-                );
-
-                continue;
-            }
-
-
-            entityTimes.put(
-                    uuid,
-                    time
-            );
-
-
-            entityCells.put(
-                    uuid,
-                    cell
-            );
+            expiresAt.put(uuid, expiry);
+            entityCells.put(uuid, cell);
         }
 
-
-        /*
-         * Удаляем старые записи.
-         */
-
-        for (
-                UUID uuid :
-                missingEntities
-        ) {
-
-            entityTimes.remove(
-                    uuid
-            );
-
-            entityCells.remove(
-                    uuid
-            );
-        }
-
-
-        if (
-                !missingEntities.isEmpty()
-        ) {
-
-            saveEntities();
-        }
+        saveEntities();
     }
 
-
-    /**
-     * Сохраняет заключённых сущностей.
-     */
     public void saveEntities() {
+        FileConfiguration data = new YamlConfiguration();
 
-        FileConfiguration data =
-                new YamlConfiguration();
+        long now = System.currentTimeMillis();
 
+        for (UUID uuid : new ArrayList<>(expiresAt.keySet())) {
+            long expiry = expiresAt.getOrDefault(uuid, 0L);
+            Location cell = entityCells.get(uuid);
 
-        for (
-                Map.Entry<UUID, Integer> entry :
-                entityTimes.entrySet()
-        ) {
-
-            UUID uuid =
-                    entry.getKey();
-
-
-            int time =
-                    entry.getValue();
-
-
-            Location cell =
-                    entityCells.get(
-                            uuid
-                    );
-
-
-            if (
-                    time <= 0
-                            ||
-                    cell == null
-                            ||
-                    cell.getWorld() == null
-            ) {
-
+            if (expiry <= now || cell == null || cell.getWorld() == null) {
                 continue;
             }
 
+            String path = "entities." + uuid;
 
-            String path =
-                    "entities." +
-                            uuid;
-
-
-            data.set(
-                    path + ".time",
-                    time
-            );
-
-
-            data.set(
-                    path + ".world",
-                    cell
-                            .getWorld()
-                            .getName()
-            );
-
-
-            data.set(
-                    path + ".x",
-                    cell.getX()
-            );
-
-
-            data.set(
-                    path + ".y",
-                    cell.getY()
-            );
-
-
-            data.set(
-                    path + ".z",
-                    cell.getZ()
-            );
-
-
-            data.set(
-                    path + ".yaw",
-                    cell.getYaw()
-            );
-
-
-            data.set(
-                    path + ".pitch",
-                    cell.getPitch()
-            );
+            data.set(path + ".expires-at", expiry);
+            data.set(path + ".world", cell.getWorld().getName());
+            data.set(path + ".x", cell.getX());
+            data.set(path + ".y", cell.getY());
+            data.set(path + ".z", cell.getZ());
+            data.set(path + ".yaw", cell.getYaw());
+            data.set(path + ".pitch", cell.getPitch());
         }
-
 
         try {
-
-            data.save(
-                    dataFile
-            );
-
-        } catch (
-                IOException exception
-        ) {
-
+            data.save(dataFile);
+        } catch (IOException exception) {
             plugin.getLogger().severe(
                     "Не удалось сохранить entity-prisoners.yml: "
-                            +
-                            exception.getMessage()
+                            + exception.getMessage()
             );
         }
     }
 
-
-    /**
-     * Заключает сущность.
-     *
-     * @param entity сущность
-     * @param seconds срок в секундах
-     * @param cell камера
-     * @return true при успешном заключении
-     */
     public boolean jailEntity(
             Entity entity,
             int seconds,
             Location cell
     ) {
-
-        if (
-                entity == null
-                        ||
-                entity.isDead()
-                        ||
-                cell == null
-                        ||
-                cell.getWorld() == null
-        ) {
-
+        if (entity == null
+                || entity.isDead()
+                || !(entity instanceof LivingEntity)
+                || entity instanceof org.bukkit.entity.Player
+                || cell == null
+                || cell.getWorld() == null
+                || seconds <= 0) {
             return false;
         }
 
+        UUID uuid = entity.getUniqueId();
 
-        /*
-         * Игроков через этот менеджер
-         * заключать нельзя.
-         */
+        long now = System.currentTimeMillis();
+        long oldExpiry = expiresAt.getOrDefault(uuid, now);
+        long base = Math.max(now, oldExpiry);
 
-        if (
-                entity instanceof org.bukkit.entity.Player
-        ) {
-
-            return false;
-        }
-
-
-        UUID uuid =
-                entity.getUniqueId();
-
-
-        /*
-         * Если сущность уже заключена,
-         * добавляем новый срок к старому.
-         */
-
-        int newTime =
-                entityTimes.getOrDefault(
-                        uuid,
-                        0
-                )
-                +
-                Math.max(
-                        1,
-                        seconds
-                );
-
-
-        entityTimes.put(
+        expiresAt.put(
                 uuid,
-                newTime
+                base + seconds * 1000L
         );
-
 
         entityCells.put(
                 uuid,
                 cell.clone()
         );
 
-
         /*
-         * Сразу отправляем сущность
-         * в камеру.
+         * Не даём обычному мобу исчезнуть из-за
+         * удаления на расстоянии от игроков.
          */
+        entity.setPersistent(true);
 
-        entity.teleport(
-                cell
-        );
+        if (entity instanceof Mob mob) {
+            mob.setRemoveWhenFarAway(false);
+        }
 
-
-        /*
-         * Сохраняем данные.
-         */
+        entity.teleport(cell);
 
         saveEntities();
-
 
         return true;
     }
 
-
-    /**
-     * Освобождает сущность.
-     *
-     * Если сущность ещё существует,
-     * она возвращается из камеры
-     * в точку освобождения.
-     *
-     * @param uuid UUID сущности
-     */
-    public void releaseEntity(
-            UUID uuid
-    ) {
-
-        if (
-                uuid == null
-        ) {
-
+    public void releaseEntity(UUID uuid) {
+        if (uuid == null) {
             return;
         }
 
+        expiresAt.remove(uuid);
+        entityCells.remove(uuid);
 
-        entityTimes.remove(
-                uuid
-        );
+        Entity entity = findEntity(uuid);
 
-
-        entityCells.remove(
-                uuid
-        );
-
-
-        Entity entity =
-                findEntity(
-                        uuid
-                );
-
-
-        if (
-                entity != null
-                        &&
-                !entity.isDead()
-        ) {
-
+        if (entity != null && !entity.isDead()) {
             Location release =
-                    plugin
-                            .getJailManager()
-                            .getReleaseLocation();
+                    plugin.getJailManager().getReleaseLocation();
 
-
-            if (
-                    release != null
-            ) {
-
-                entity.teleport(
-                        release
-                );
+            if (release != null) {
+                entity.teleport(release);
             }
         }
-
 
         saveEntities();
     }
 
-
-    /**
-     * Уменьшает сроки заключённых сущностей.
-     *
-     * Вызывается раз в секунду.
-     */
     public void tickTimers() {
-
-        if (
-                entityTimes.isEmpty()
-        ) {
-
+        if (expiresAt.isEmpty()) {
             return;
         }
 
+        long now = System.currentTimeMillis();
+        List<UUID> expiredAndLoaded = new ArrayList<>();
 
-        List<UUID> toRelease =
-                new ArrayList<>();
+        for (UUID uuid : new ArrayList<>(expiresAt.keySet())) {
+            long expiry = expiresAt.getOrDefault(uuid, 0L);
 
-
-        List<UUID> toRemove =
-                new ArrayList<>();
-
-
-        for (
-                Map.Entry<UUID, Integer> entry :
-                new ArrayList<>(
-                        entityTimes.entrySet()
-                )
-        ) {
-
-            UUID uuid =
-                    entry.getKey();
-
-
-            int time =
-                    entry.getValue();
-
-
-            Entity entity =
-                    findEntity(
-                            uuid
-                    );
-
+            Entity entity = findEntity(uuid);
 
             /*
-             * Сущность исчезла.
+             * Сущность может находиться в выгруженном чанке.
+             * В таком случае запись сохраняем.
              */
-
-            if (
-                    entity == null
-                            ||
-                    entity.isDead()
-            ) {
-
-                toRemove.add(
-                        uuid
-                );
-
+            if (entity == null) {
                 continue;
             }
 
-
-            /*
-             * Игрок каким-то образом
-             * оказался в entity manager.
-             *
-             * Удаляем такую запись.
-             */
-
-            if (
-                    entity instanceof org.bukkit.entity.Player
-            ) {
-
-                toRemove.add(
-                        uuid
-                );
-
+            if (entity.isDead()
+                    || entity instanceof org.bukkit.entity.Player) {
+                expiresAt.remove(uuid);
+                entityCells.remove(uuid);
                 continue;
             }
 
-
-            time--;
-
-
-            if (
-                    time <= 0
-            ) {
-
-                toRelease.add(
-                        uuid
-                );
-
+            if (expiry <= now) {
+                expiredAndLoaded.add(uuid);
                 continue;
             }
 
+            Location cell = entityCells.get(uuid);
 
-            entityTimes.put(
-                    uuid,
-                    time
-            );
-
-
-            /*
-             * Проверяем, не вышла ли сущность
-             * за пределы камеры.
-             */
-
-            Location cell =
-                    entityCells.get(
-                            uuid
-                    );
-
-
-            if (
-                    cell != null
-                            &&
-                    entity.getWorld()
-                            .equals(
-                                    cell.getWorld()
-                            )
-            ) {
+            if (cell != null
+                    && cell.getWorld() != null
+                    && entity.getWorld().equals(cell.getWorld())) {
 
                 double radius =
-                        plugin
-                                .getJailManager()
-                                .getCellRadius();
+                        plugin.getJailManager().getCellRadius();
 
+                if (entity.getLocation().distanceSquared(cell)
+                        > radius * radius) {
 
-                if (
-                        entity
-                                .getLocation()
-                                .distanceSquared(
-                                        cell
-                                )
-                                >
-                                radius * radius
-                ) {
-
-                    entity.teleport(
-                            cell
-                    );
+                    entity.teleport(cell);
                 }
             }
         }
 
-
-        /*
-         * Освобождаем тех,
-         * у кого закончился срок.
-         */
-
-        for (
-                UUID uuid :
-                toRelease
-        ) {
-
-            releaseEntity(
-                    uuid
-            );
+        for (UUID uuid : expiredAndLoaded) {
+            releaseEntity(uuid);
         }
-
-
-        /*
-         * Удаляем сущности,
-         * которые исчезли.
-         */
-
-        for (
-                UUID uuid :
-                toRemove
-        ) {
-
-            entityTimes.remove(
-                    uuid
-            );
-
-            entityCells.remove(
-                    uuid
-            );
-        }
-
 
         saveEntities();
     }
 
+    public boolean isJailed(UUID uuid) {
+        if (uuid == null) {
+            return false;
+        }
 
-    /**
-     * Проверяет, находится ли сущность
-     * в тюрьме.
-     *
-     * @param uuid UUID сущности
-     * @return true, если заключена
-     */
-    public boolean isJailed(
-            UUID uuid
-    ) {
+        Long expiry = expiresAt.get(uuid);
 
-        return uuid != null
-                &&
-                entityTimes.containsKey(
-                        uuid
-                )
-                &&
-                entityTimes.get(
-                        uuid
-                ) > 0;
+        return expiry != null
+                && expiry > System.currentTimeMillis();
     }
 
+    public int getTimeRemaining(UUID uuid) {
+        if (uuid == null) {
+            return 0;
+        }
 
-    /**
-     * Возвращает оставшееся время.
-     *
-     * @param uuid UUID сущности
-     * @return секунды
-     */
-    public int getTimeRemaining(
-            UUID uuid
-    ) {
+        Long expiry = expiresAt.get(uuid);
 
-        return entityTimes.getOrDefault(
-                uuid,
-                0
-        );
-    }
+        if (expiry == null) {
+            return 0;
+        }
 
-
-    /**
-     * Возвращает камеру сущности.
-     *
-     * @param uuid UUID сущности
-     * @return Location камеры
-     */
-    public Location getCellLocation(
-            UUID uuid
-    ) {
-
-        Location location =
-                entityCells.get(
-                        uuid
+        long remaining =
+                Math.max(
+                        0L,
+                        expiry - System.currentTimeMillis()
                 );
 
-
-        return location == null
-                ? null
-                : location.clone();
-    }
-
-
-    /**
-     * Возвращает всех заключённых сущностей.
-     *
-     * @return карта UUID -> время
-     */
-    public Map<UUID, Integer> getAllEntities() {
-
-        return Map.copyOf(
-                entityTimes
+        return (int) Math.min(
+                Integer.MAX_VALUE,
+                (remaining + 999L) / 1000L
         );
     }
 
+    public Location getCellLocation(UUID uuid) {
+        Location location = entityCells.get(uuid);
+        return location == null ? null : location.clone();
+    }
 
-    /**
-     * Находит сущность по UUID
-     * во всех загруженных мирах.
-     *
-     * @param uuid UUID сущности
-     * @return сущность или null
-     */
-    private Entity findEntity(
-            UUID uuid
-    ) {
+    public Map<UUID, Integer> getAllEntities() {
+        Map<UUID, Integer> result = new HashMap<>();
 
-        if (
-                uuid == null
-        ) {
+        for (UUID uuid : expiresAt.keySet()) {
+            int time = getTimeRemaining(uuid);
 
+            if (time > 0) {
+                result.put(uuid, time);
+            }
+        }
+
+        return Map.copyOf(result);
+    }
+
+    private Entity findEntity(UUID uuid) {
+        if (uuid == null) {
             return null;
         }
 
+        Entity entity = Bukkit.getEntity(uuid);
 
-        for (
-                World world :
-                Bukkit.getWorlds()
-        ) {
+        if (entity != null) {
+            return entity;
+        }
 
-            Entity entity =
-                    world.getEntity(
-                            uuid
-                    );
+        for (World world : Bukkit.getWorlds()) {
+            entity = world.getEntity(uuid);
 
-
-            if (
-                    entity != null
-            ) {
-
+            if (entity != null) {
                 return entity;
             }
         }
 
-
         return null;
     }
 
-
-    /**
-     * Читает координаты камеры
-     * из файла.
-     */
     private Location readLocation(
             FileConfiguration data,
             String path
     ) {
+        String worldName = data.getString(path + ".world");
 
-        String worldName =
-                data.getString(
-                        path + ".world"
-                );
-
-
-        if (
-                worldName == null
-        ) {
-
+        if (worldName == null) {
             return null;
         }
 
+        World world = Bukkit.getWorld(worldName);
 
-        World world =
-                Bukkit.getWorld(
-                        worldName
-                );
-
-
-        if (
-                world == null
-        ) {
-
+        if (world == null) {
             return null;
         }
-
 
         return new Location(
-
                 world,
-
-                data.getDouble(
-                        path + ".x"
-                ),
-
-                data.getDouble(
-                        path + ".y"
-                ),
-
-                data.getDouble(
-                        path + ".z"
-                ),
-
-                (float) data.getDouble(
-                        path + ".yaw",
-                        0.0
-                ),
-
-                (float) data.getDouble(
-                        path + ".pitch",
-                        0.0
-                )
+                data.getDouble(path + ".x"),
+                data.getDouble(path + ".y"),
+                data.getDouble(path + ".z"),
+                (float) data.getDouble(path + ".yaw", 0.0),
+                (float) data.getDouble(path + ".pitch", 0.0)
         );
     }
 }
