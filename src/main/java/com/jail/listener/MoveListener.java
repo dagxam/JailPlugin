@@ -1,5 +1,6 @@
 package com.jail.listener;
 
+import com.jail.JailManager;
 import com.jail.JailPlugin;
 
 import org.bukkit.Location;
@@ -12,9 +13,24 @@ import org.bukkit.event.Listener;
 
 import org.bukkit.event.player.PlayerMoveEvent;
 
+
+/**
+ * Контролирует перемещение заключённых.
+ *
+ * Заключённый не может покинуть
+ * установленный радиус своей камеры.
+ *
+ * Радиус задаётся в config.yml:
+ *
+ * cell-radius: 3.0
+ */
 public final class MoveListener
         implements Listener {
 
+
+    /**
+     * Главный класс плагина.
+     */
     private final JailPlugin plugin;
 
 
@@ -26,6 +42,9 @@ public final class MoveListener
     }
 
 
+    /**
+     * Обрабатывает перемещение игрока.
+     */
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
@@ -38,29 +57,44 @@ public final class MoveListener
                 event.getPlayer();
 
 
+        JailManager manager =
+                plugin.getJailManager();
+
+
+        /*
+         * Если игрок не находится
+         * в тюрьме — ничего не делаем.
+         */
+
         if (
-                !plugin
-                        .getJailManager()
-                        .isJailed(
-                                player.getUniqueId()
-                        )
+                !manager.isJailed(
+                        player.getUniqueId()
+                )
         ) {
 
             return;
         }
 
 
-        Location cell =
-                plugin
-                        .getJailManager()
-                        .getCellLocation(
-                                player.getUniqueId()
-                        );
+        /*
+         * Получаем центр камеры.
+         */
 
+        Location cell =
+                manager.getCellLocation(
+                        player.getUniqueId()
+                );
+
+
+        /*
+         * Если камера не найдена,
+         * не блокируем движение.
+         */
 
         if (
                 cell == null
-                        || event.getTo() == null
+                        ||
+                event.getTo() == null
         ) {
 
             return;
@@ -71,14 +105,21 @@ public final class MoveListener
                 event.getTo();
 
 
+        /*
+         * Если игрок каким-либо образом
+         * оказался в другом мире,
+         * возвращаем его в камеру.
+         */
+
         if (
-                !to.getWorld()
-                        .equals(
-                                cell.getWorld()
-                        )
+                to.getWorld() == null
+                        ||
+                !to.getWorld().equals(
+                        cell.getWorld()
+                )
         ) {
 
-            player.teleport(
+            event.setTo(
                     cell
             );
 
@@ -86,21 +127,67 @@ public final class MoveListener
         }
 
 
+        /*
+         * Получаем максимальный радиус.
+         */
+
         double radius =
-                plugin
-                        .getJailManager()
-                        .getCellRadius();
+                manager.getCellRadius();
 
 
-        if (
+        /*
+         * Сравниваем расстояние.
+         *
+         * Используем distanceSquared,
+         * чтобы не вычислять квадратный корень
+         * каждый тик движения.
+         */
+
+        double maxDistanceSquared =
+                radius * radius;
+
+
+        double currentDistanceSquared =
                 to.distanceSquared(
                         cell
-                )
-                        > radius * radius
+                );
+
+
+        /*
+         * Если игрок вышел за пределы камеры,
+         * возвращаем его обратно.
+         */
+
+        if (
+                currentDistanceSquared
+                        >
+                        maxDistanceSquared
         ) {
 
-            player.teleport(
+            /*
+             * Отменяем движение.
+             */
+
+            event.setTo(
                     cell
+            );
+
+
+            /*
+             * Показываем предупреждение.
+             *
+             * Чтобы сообщение не отправлялось
+             * десятки раз подряд при движении,
+             * оно показывается только при фактическом
+             * выходе за пределы.
+             */
+
+            player.sendActionBar(
+
+                    JailManager.component(
+
+                            "&c⛓ Вы не можете покинуть свою камеру!"
+                    )
             );
         }
     }
