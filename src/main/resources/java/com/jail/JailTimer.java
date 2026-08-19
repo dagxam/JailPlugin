@@ -2,7 +2,7 @@ package com.jail;
 
 import org.bukkit.scheduler.BukkitRunnable;
 
-public class JailTimer extends BukkitRunnable {
+public final class JailTimer extends BukkitRunnable {
 
     private final JailPlugin plugin;
 
@@ -12,6 +12,9 @@ public class JailTimer extends BukkitRunnable {
 
     @Override
     public void run() {
-        plugin.getJailManager().tickTimers();
+
+        plugin
+                .getJailManager()
+                .tickTimers();
     }
 }
