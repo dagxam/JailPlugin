@@ -356,6 +356,23 @@ public final class RestrictionListener
         event.setCancelled(
                 true
         );
+
+
+        /*
+         * Показываем сообщение игроку.
+         */
+
+        player.sendActionBar(
+
+                JailManager.component(
+
+                        plugin
+                                .getJailManager()
+                                .getMessage(
+                                        "inventory-blocked"
+                                )
+                )
+        );
     }
 
 
