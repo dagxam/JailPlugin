@@ -15,7 +15,7 @@ commands:
   prison:
     description: Управление системой тюрьмы
     permission: prison.admin
-    usage: /prison <jail|release|list|tp|setcell|setrelease|cells|removecell|reload>
+    usage: /prison <jail|release|list|tp|setcell|setrelease|cells|removecell|reload|entityjail>
 
   # Просмотр оставшегося срока.
   jailtime:
@@ -35,6 +35,11 @@ permissions:
   # Полный доступ администратора.
   prison.admin:
     description: Полный доступ к управлению системой тюрьмы
+    default: op
+
+  # Отдельное право на ручное заключение сущностей.
+  prison.entityjail:
+    description: Разрешение на ручное заключение живых сущностей
     default: op
 
   # Защита от автоматического заключения.
