@@ -17,9 +17,23 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 
 import java.util.UUID;
 
+
+/**
+ * Обработчик подключения и возрождения игроков.
+ *
+ * Отвечает за:
+ *
+ * - возвращение заключённого в камеру после входа;
+ * - возвращение заключённого в камеру после смерти;
+ * - восстановление положения заключённого.
+ */
 public final class ConnectionListener
         implements Listener {
 
+
+    /**
+     * Главный класс плагина.
+     */
     private final JailPlugin plugin;
 
 
@@ -31,6 +45,13 @@ public final class ConnectionListener
     }
 
 
+    /**
+     * Игрок вошёл на сервер.
+     *
+     * Если игрок находится в тюрьме,
+     * через небольшой промежуток времени
+     * возвращаем его в назначенную камеру.
+     */
     @EventHandler(
             priority = EventPriority.HIGHEST
     )
@@ -46,29 +67,61 @@ public final class ConnectionListener
                 player.getUniqueId();
 
 
+        /*
+         * Небольшая задержка нужна для того,
+         * чтобы мир игрока и его состояние
+         * полностью загрузились.
+         */
+
         Bukkit.getScheduler()
                 .runTaskLater(
                         plugin,
+
                         () -> {
 
+                            /*
+                             * Игрок мог выйти за это время.
+                             */
+
+                            if (!player.isOnline()) {
+
+                                return;
+                            }
+
+
+                            JailManager manager =
+                                    plugin.getJailManager();
+
+
+                            /*
+                             * Проверяем,
+                             * находится ли игрок в тюрьме.
+                             */
+
                             if (
-                                    !player.isOnline()
-                                            || !plugin
-                                            .getJailManager()
-                                            .isJailed(uuid)
+                                    !manager.isJailed(
+                                            uuid
+                                    )
                             ) {
 
                                 return;
                             }
 
 
-                            Location cell =
-                                    plugin
-                                            .getJailManager()
-                                            .getCellLocation(
-                                                    uuid
-                                            );
+                            /*
+                             * Получаем камеру.
+                             */
 
+                            Location cell =
+                                    manager.getCellLocation(
+                                            uuid
+                                    );
+
+
+                            /*
+                             * Возвращаем игрока
+                             * в камеру.
+                             */
 
                             if (cell != null) {
 
@@ -78,46 +131,78 @@ public final class ConnectionListener
                             }
 
 
+                            /*
+                             * Получаем оставшееся время.
+                             */
+
                             int time =
-                                    plugin
-                                            .getJailManager()
-                                            .getTimeRemaining(
-                                                    uuid
-                                            );
+                                    manager.getTimeRemaining(
+                                            uuid
+                                    );
+
+
+                            /*
+                             * Форматируем время
+                             * по-русски.
+                             */
+
+                            String formattedTime =
+                                    manager.formatTime(
+                                            time
+                                    );
+
+
+                            /*
+                             * Сообщаем игроку,
+                             * что он всё ещё заключён.
+                             */
+
+                            player.sendMessage("");
 
 
                             player.sendMessage(
 
-                                    JailManager.colorize(
+                                    JailManager.component(
 
-                                            plugin
-                                                    .getJailManager()
+                                            manager.getMessage(
+                                                    "join-still-jailed"
+                                            )
+                                    )
+                            );
+
+
+                            player.sendMessage(
+
+                                    JailManager.component(
+
+                                            manager
                                                     .getMessage(
-                                                            "join-still-jailed"
+                                                            "join-still-jailed-time"
                                                     )
 
                                                     .replace(
-                                                            "%mins%",
-                                                            String.valueOf(
-                                                                    time / 60
-                                                            )
-                                                    )
-
-                                                    .replace(
-                                                            "%secs%",
-                                                            String.valueOf(
-                                                                    time % 60
-                                                            )
+                                                            "%time%",
+                                                            formattedTime
                                                     )
                                     )
                             );
 
+
+                            player.sendMessage("");
                         },
+
                         2L
                 );
     }
 
 
+    /**
+     * Игрок возродился.
+     *
+     * Если он заключён,
+     * точка возрождения устанавливается
+     * в его камере.
+     */
     @EventHandler(
             priority = EventPriority.HIGHEST
     )
@@ -133,22 +218,33 @@ public final class ConnectionListener
                 player.getUniqueId();
 
 
+        JailManager manager =
+                plugin.getJailManager();
+
+
+        /*
+         * Если игрок не заключён,
+         * ничего не делаем.
+         */
+
         if (
-                !plugin
-                        .getJailManager()
-                        .isJailed(uuid)
+                !manager.isJailed(
+                        uuid
+                )
         ) {
 
             return;
         }
 
 
+        /*
+         * Получаем камеру.
+         */
+
         Location cell =
-                plugin
-                        .getJailManager()
-                        .getCellLocation(
-                                uuid
-                        );
+                manager.getCellLocation(
+                        uuid
+                );
 
 
         if (cell == null) {
@@ -157,29 +253,58 @@ public final class ConnectionListener
         }
 
 
+        /*
+         * Устанавливаем камеру
+         * как точку возрождения.
+         */
+
         event.setRespawnLocation(
                 cell
         );
 
 
+        /*
+         * Дополнительно телепортируем игрока
+         * после завершения процесса возрождения.
+         *
+         * Это помогает избежать ситуаций,
+         * когда другой плагин изменяет точку
+         * возрождения игрока.
+         */
+
         Bukkit.getScheduler()
                 .runTaskLater(
                         plugin,
+
                         () -> {
 
                             if (
-                                    player.isOnline()
-                                            && plugin
-                                            .getJailManager()
-                                            .isJailed(uuid)
+                                    !player.isOnline()
+                                            ||
+                                    !manager.isJailed(
+                                            uuid
+                                    )
                             ) {
 
+                                return;
+                            }
+
+
+                            Location currentCell =
+                                    manager.getCellLocation(
+                                            uuid
+                                    );
+
+
+                            if (currentCell != null) {
+
                                 player.teleport(
-                                        cell
+                                        currentCell
                                 );
                             }
 
                         },
+
                         2L
                 );
     }
