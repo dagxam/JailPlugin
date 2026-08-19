@@ -228,7 +228,7 @@ public final class JailPlugin
 
         registerCommand(
                 "getcoords",
-                new GetCoordsCommand(),
+                new GetCoordsCommand(this),
                 false
         );
     }
