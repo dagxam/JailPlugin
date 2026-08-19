@@ -1,9 +1,10 @@
 package com.jail;
 
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.title.Title;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -12,344 +13,1165 @@ import org.bukkit.entity.Player;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
 
-public class JailManager {
+import java.time.Duration;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+
+public final class JailManager {
+
+    private static final LegacyComponentSerializer LEGACY =
+            LegacyComponentSerializer.legacyAmpersand();
 
     private final JailPlugin plugin;
+
     private final File dataFile;
 
-    // Данные заключённых: UUID -> оставшееся время (секунды)
-    private final Map<UUID, Integer> prisonerTimes = new HashMap<>();
-    // Данные заключённых: UUID -> локация камеры
-    private final Map<UUID, Location> prisonerCells = new HashMap<>();
+    private final Map<UUID, Integer> prisonerTimes =
+            new HashMap<>();
 
-    // Кэш из конфига
-    private final List<Location> cellLocations = new ArrayList<>();
+    private final Map<UUID, Location> prisonerCells =
+            new HashMap<>();
+
+    private final Map<String, Location> cells =
+            new LinkedHashMap<>();
+
     private Location releaseLocation;
+
     private double cellRadius;
-    private List<String> allowedCommands = new ArrayList<>();
+
+    private List<String> allowedCommands =
+            new ArrayList<>();
+
     private boolean broadcastArrests;
 
+
     public JailManager(JailPlugin plugin) {
+
         this.plugin = plugin;
-        this.dataFile = new File(plugin.getDataFolder(), "prisoners.yml");
+
+        this.dataFile = new File(
+                plugin.getDataFolder(),
+                "prisoners.yml"
+        );
+
         reloadSettings();
     }
 
-    // ─── Загрузка настроек из config.yml ───
 
     public void reloadSettings() {
-        plugin.reloadConfig();
-        FileConfiguration config = plugin.getConfig();
 
-        // Загрузка камер
-        cellLocations.clear();
-        if (config.isConfigurationSection("cells")) {
-            for (String key : config.getConfigurationSection("cells").getKeys(false)) {
-                String path = "cells." + key;
-                String worldName = config.getString(path + ".world", "world");
-                World world = Bukkit.getWorld(worldName);
-                if (world == null) {
-                    plugin.getLogger().warning("Мир '" + worldName + "' не найден для камеры " + key);
-                    continue;
+        plugin.reloadConfig();
+
+        FileConfiguration config =
+                plugin.getConfig();
+
+
+        cells.clear();
+
+
+        if (
+                config.isConfigurationSection(
+                        "cells"
+                )
+        ) {
+
+            for (
+                    String id :
+                    config
+                            .getConfigurationSection("cells")
+                            .getKeys(false)
+            ) {
+
+                String path =
+                        "cells." + id;
+
+                Location location =
+                        readLocation(
+                                config,
+                                path
+                        );
+
+                if (location != null) {
+
+                    cells.put(
+                            id,
+                            location
+                    );
                 }
-                cellLocations.add(new Location(world,
-                        config.getDouble(path + ".x"),
-                        config.getDouble(path + ".y"),
-                        config.getDouble(path + ".z")));
             }
         }
 
-        if (cellLocations.isEmpty()) {
-            plugin.getLogger().warning("Не настроено ни одной камеры! Проверьте config.yml");
+
+        releaseLocation =
+                readLocation(
+                        config,
+                        "release"
+                );
+
+
+        if (releaseLocation == null) {
+
+            World world =
+                    Bukkit.getWorlds().isEmpty()
+                            ? null
+                            : Bukkit.getWorlds().get(0);
+
+            if (world != null) {
+
+                releaseLocation =
+                        world.getSpawnLocation();
+            }
         }
 
-        // Точка освобождения
-        String relWorldName = config.getString("release.world", "world");
-        World relWorld = Bukkit.getWorld(relWorldName);
-        if (relWorld != null) {
-            releaseLocation = new Location(relWorld,
-                    config.getDouble("release.x"),
-                    config.getDouble("release.y"),
-                    config.getDouble("release.z"));
-        } else {
-            plugin.getLogger().warning("Мир '" + relWorldName + "' не найден для точки освобождения!");
-            releaseLocation = Bukkit.getWorlds().get(0).getSpawnLocation();
-        }
 
-        cellRadius = config.getDouble("cell-radius", 3.0);
-        broadcastArrests = config.getBoolean("broadcast-arrests", true);
+        cellRadius =
+                Math.max(
+                        0.5,
+                        config.getDouble(
+                                "cell-radius",
+                                3.0
+                        )
+                );
 
-        // Разрешённые команды (в нижнем регистре)
-        allowedCommands = new ArrayList<>();
-        for (String cmd : config.getStringList("allowed-commands")) {
-            allowedCommands.add(cmd.toLowerCase());
+
+        broadcastArrests =
+                config.getBoolean(
+                        "broadcast-arrests",
+                        true
+                );
+
+
+        allowedCommands =
+                new ArrayList<>();
+
+        for (
+                String command :
+                config.getStringList(
+                        "allowed-commands"
+                )
+        ) {
+
+            allowedCommands.add(
+                    command.toLowerCase(
+                            Locale.ROOT
+                    )
+            );
         }
     }
 
-    // ─── Загрузка/сохранение данных заключённых ───
+
+    private Location readLocation(
+            FileConfiguration config,
+            String path
+    ) {
+
+        String worldName =
+                config.getString(
+                        path + ".world"
+                );
+
+        if (worldName == null) {
+
+            return null;
+        }
+
+
+        World world =
+                Bukkit.getWorld(worldName);
+
+        if (world == null) {
+
+            plugin.getLogger().warning(
+                    "Мир '" +
+                            worldName +
+                            "' не найден для " +
+                            path
+            );
+
+            return null;
+        }
+
+
+        return new Location(
+
+                world,
+
+                config.getDouble(
+                        path + ".x"
+                ),
+
+                config.getDouble(
+                        path + ".y"
+                ),
+
+                config.getDouble(
+                        path + ".z"
+                ),
+
+                (float) config.getDouble(
+                        path + ".yaw",
+                        0.0
+                ),
+
+                (float) config.getDouble(
+                        path + ".pitch",
+                        0.0
+                )
+        );
+    }
+
 
     public void loadPrisoners() {
-        if (!dataFile.exists()) return;
 
-        FileConfiguration data = YamlConfiguration.loadConfiguration(dataFile);
-        if (!data.isConfigurationSection("prisoners")) return;
+        prisonerTimes.clear();
 
-        for (String uuidStr : data.getConfigurationSection("prisoners").getKeys(false)) {
-            try {
-                UUID uuid = UUID.fromString(uuidStr);
-                String path = "prisoners." + uuidStr;
+        prisonerCells.clear();
 
-                int time = data.getInt(path + ".time", 0);
-                if (time <= 0) continue;
 
-                String worldName = data.getString(path + ".world", "world");
-                World world = Bukkit.getWorld(worldName);
-                if (world == null) continue;
+        if (!dataFile.exists()) {
 
-                Location cellLoc = new Location(world,
-                        data.getDouble(path + ".x"),
-                        data.getDouble(path + ".y"),
-                        data.getDouble(path + ".z"));
-
-                prisonerTimes.put(uuid, time);
-                prisonerCells.put(uuid, cellLoc);
-
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Некорректный UUID в данных: " + uuidStr);
-            }
+            return;
         }
 
-        plugin.getLogger().info("Загружено заключённых: " + prisonerTimes.size());
+
+        FileConfiguration data =
+                YamlConfiguration
+                        .loadConfiguration(
+                                dataFile
+                        );
+
+
+        if (
+                !data.isConfigurationSection(
+                        "prisoners"
+                )
+        ) {
+
+            return;
+        }
+
+
+        for (
+                String uuidText :
+                data
+                        .getConfigurationSection(
+                                "prisoners"
+                        )
+                        .getKeys(false)
+        ) {
+
+            try {
+
+                UUID uuid =
+                        UUID.fromString(
+                                uuidText
+                        );
+
+                String path =
+                        "prisoners." + uuidText;
+
+
+                int time =
+                        data.getInt(
+                                path + ".time",
+                                0
+                        );
+
+
+                if (time <= 0) {
+
+                    continue;
+                }
+
+
+                String cellId =
+                        data.getString(
+                                path + ".cell"
+                        );
+
+
+                Location cell = null;
+
+
+                if (cellId != null) {
+
+                    cell =
+                            cells.get(
+                                    cellId
+                            );
+                }
+
+
+                if (cell == null) {
+
+                    String worldName =
+                            data.getString(
+                                    path + ".world",
+                                    "world"
+                            );
+
+                    World world =
+                            Bukkit.getWorld(
+                                    worldName
+                            );
+
+                    if (world != null) {
+
+                        cell =
+                                new Location(
+
+                                        world,
+
+                                        data.getDouble(
+                                                path + ".x"
+                                        ),
+
+                                        data.getDouble(
+                                                path + ".y"
+                                        ),
+
+                                        data.getDouble(
+                                                path + ".z"
+                                        )
+                                );
+                    }
+                }
+
+
+                if (cell != null) {
+
+                    prisonerTimes.put(
+                            uuid,
+                            time
+                    );
+
+                    prisonerCells.put(
+                            uuid,
+                            cell
+                    );
+                }
+
+            } catch (Exception exception) {
+
+                plugin.getLogger().warning(
+                        "Не удалось загрузить заключённого: "
+                                + uuidText
+                );
+            }
+        }
     }
+
 
     public void savePrisoners() {
-        FileConfiguration data = new YamlConfiguration();
 
-        for (Map.Entry<UUID, Integer> entry : prisonerTimes.entrySet()) {
-            UUID uuid = entry.getKey();
-            Location cell = prisonerCells.get(uuid);
-            if (cell == null || cell.getWorld() == null) continue;
+        FileConfiguration data =
+                new YamlConfiguration();
 
-            String path = "prisoners." + uuid.toString();
-            data.set(path + ".time", entry.getValue());
-            data.set(path + ".world", cell.getWorld().getName());
-            data.set(path + ".x", cell.getX());
-            data.set(path + ".y", cell.getY());
-            data.set(path + ".z", cell.getZ());
+
+        for (
+                UUID uuid :
+                prisonerTimes.keySet()
+        ) {
+
+            Location cell =
+                    prisonerCells.get(
+                            uuid
+                    );
+
+            if (
+                    cell == null
+                            || cell.getWorld() == null
+            ) {
+
+                continue;
+            }
+
+
+            String path =
+                    "prisoners." + uuid;
+
+
+            data.set(
+                    path + ".time",
+                    prisonerTimes.get(uuid)
+            );
+
+
+            String cellId =
+                    findCellId(cell);
+
+
+            if (cellId != null) {
+
+                data.set(
+                        path + ".cell",
+                        cellId
+                );
+
+            } else {
+
+                data.set(
+                        path + ".world",
+                        cell.getWorld().getName()
+                );
+
+                data.set(
+                        path + ".x",
+                        cell.getX()
+                );
+
+                data.set(
+                        path + ".y",
+                        cell.getY()
+                );
+
+                data.set(
+                        path + ".z",
+                        cell.getZ()
+                );
+            }
         }
+
 
         try {
-            data.save(dataFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Не удалось сохранить данные заключённых!");
-            e.printStackTrace();
+
+            data.save(
+                    dataFile
+            );
+
+        } catch (IOException exception) {
+
+            plugin.getLogger().severe(
+                    "Не удалось сохранить prisoners.yml"
+            );
+
+            exception.printStackTrace();
         }
     }
 
-    // ─── Основные методы тюрьмы ───
 
-    /**
-     * Посадить игрока в тюрьму.
-     * Если игрок уже в тюрьме — время ПРИБАВЛЯЕТСЯ, камера выбирается заново.
-     */
-    public void jailPlayer(Player player, int seconds, String reason) {
-        UUID uuid = player.getUniqueId();
+    private String findCellId(
+            Location location
+    ) {
 
-        // Добавляем время (если уже сидит — прибавляем)
-        int currentTime = prisonerTimes.getOrDefault(uuid, 0);
-        prisonerTimes.put(uuid, currentTime + seconds);
+        for (
+                Map.Entry<String, Location> entry :
+                cells.entrySet()
+        ) {
 
-        // Выбираем случайную камеру
-        Location cell = getRandomCell();
-        prisonerCells.put(uuid, cell);
+            Location cell =
+                    entry.getValue();
 
-        // Телепортация с задержкой 2 тика (как в оригинале)
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                player.teleport(cell);
+
+            if (
+                    cell.getWorld().equals(
+                            location.getWorld()
+                    )
+                            && cell.distanceSquared(
+                            location
+                    ) < 0.01
+            ) {
+
+                return entry.getKey();
             }
-        }, 2L);
+        }
 
-        // Сообщения игроку
-        String timeFormatted = formatTimeWords(seconds);
-        player.sendMessage("");
-        player.sendMessage(colorize(getMessage("arrest-header")));
-        player.sendMessage(colorize(getMessage("arrest-reason")
-                .replace("%reason%", reason)));
-        player.sendMessage(colorize(getMessage("arrest-time")
-                .replace("%time%", timeFormatted)));
+        return null;
+    }
+
+
+    public void jailPlayer(
+            Player player,
+            int seconds,
+            String reason
+    ) {
+
+        if (cells.isEmpty()) {
+
+            player.sendMessage(
+                    colorize(
+                            getMessage(
+                                    "no-cells"
+                            )
+                    )
+            );
+
+            return;
+        }
+
+
+        UUID uuid =
+                player.getUniqueId();
+
+
+        int newTime =
+                prisonerTimes.getOrDefault(
+                        uuid,
+                        0
+                )
+                        + Math.max(
+                        1,
+                        seconds
+                );
+
+
+        Location cell =
+                getRandomCell();
+
+
+        prisonerTimes.put(
+                uuid,
+                newTime
+        );
+
+
+        prisonerCells.put(
+                uuid,
+                cell
+        );
+
+
+        player.teleport(
+                cell
+        );
+
+
         player.sendMessage("");
 
-        // Оповещение в чат
+        player.sendMessage(
+                colorize(
+                        getMessage(
+                                "arrest-header"
+                        )
+                )
+        );
+
+        player.sendMessage(
+                colorize(
+                        getMessage(
+                                "arrest-reason"
+                        )
+                                .replace(
+                                        "%reason%",
+                                        reason
+                                )
+                )
+        );
+
+        player.sendMessage(
+                colorize(
+                        getMessage(
+                                "arrest-time"
+                        )
+                                .replace(
+                                        "%time%",
+                                        formatTimeWords(
+                                                seconds
+                                        )
+                                )
+                )
+        );
+
+        player.sendMessage("");
+
+
         if (broadcastArrests) {
-            Bukkit.broadcastMessage(colorize(getMessage("broadcast-arrest")
-                    .replace("%player%", player.getName())
-                    .replace("%reason%", reason)));
+
+            Bukkit.broadcastMessage(
+                    colorize(
+                            getMessage(
+                                    "broadcast-arrest"
+                            )
+                                    .replace(
+                                            "%player%",
+                                            player.getName()
+                                    )
+                                    .replace(
+                                            "%reason%",
+                                            reason
+                                    )
+                    )
+            );
         }
+
 
         savePrisoners();
     }
 
-    /**
-     * Освободить игрока из тюрьмы.
-     */
-    public void releasePlayer(UUID uuid) {
-        prisonerTimes.remove(uuid);
-        prisonerCells.remove(uuid);
 
-        Player player = Bukkit.getPlayer(uuid);
-        if (player != null && player.isOnline()) {
-            player.teleport(releaseLocation);
+    public void releasePlayer(
+            UUID uuid
+    ) {
+
+        prisonerTimes.remove(
+                uuid
+        );
+
+        prisonerCells.remove(
+                uuid
+        );
+
+
+        Player player =
+                Bukkit.getPlayer(
+                        uuid
+                );
+
+
+        if (
+                player != null
+                        && player.isOnline()
+                        && releaseLocation != null
+        ) {
+
+            player.teleport(
+                    releaseLocation
+            );
+
 
             player.sendMessage("");
-            player.sendMessage(colorize(getMessage("release-chat")));
+
+            player.sendMessage(
+                    colorize(
+                            getMessage(
+                                    "release-chat"
+                            )
+                    )
+            );
+
             player.sendMessage("");
 
-            player.sendTitle(
-                    colorize(getMessage("release-title")),
-                    colorize(getMessage("release-subtitle")),
-                    10, 50, 10);
+
+            player.showTitle(
+                    Title.title(
+
+                            component(
+                                    getMessage(
+                                            "release-title"
+                                    )
+                            ),
+
+                            component(
+                                    getMessage(
+                                            "release-subtitle"
+                                    )
+                            ),
+
+                            Title.Times.times(
+
+                                    Duration.ofMillis(
+                                            300
+                                    ),
+
+                                    Duration.ofMillis(
+                                            1500
+                                    ),
+
+                                    Duration.ofMillis(
+                                            300
+                                    )
+                            )
+                    )
+            );
         }
+
 
         savePrisoners();
     }
 
-    /**
-     * Тик таймера — вызывается каждую секунду.
-     */
+
     public void tickTimers() {
-        // Создаём копию чтобы избежать ConcurrentModification
-        List<UUID> toRelease = new ArrayList<>();
 
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            UUID uuid = player.getUniqueId();
-            if (!prisonerTimes.containsKey(uuid)) continue;
+        List<UUID> toRelease =
+                new ArrayList<>();
 
-            int time = prisonerTimes.get(uuid);
 
-            if (time > 0) {
-                time--;
-                prisonerTimes.put(uuid, time);
+        for (
+                Player player :
+                Bukkit.getOnlinePlayers()
+        ) {
 
-                // Экшн-бар с таймером
-                int mins = time / 60;
-                int secs = time % 60;
-                String msg = colorize(getMessage("actionbar-timer")
-                        .replace("%mins%", String.valueOf(mins))
-                        .replace("%secs%", String.valueOf(secs)));
-                player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
-                        new TextComponent(msg));
-            } else {
-                toRelease.add(uuid);
+            UUID uuid =
+                    player.getUniqueId();
+
+
+            Integer current =
+                    prisonerTimes.get(
+                            uuid
+                    );
+
+
+            if (current == null) {
+
+                continue;
             }
+
+
+            int time =
+                    current - 1;
+
+
+            if (time <= 0) {
+
+                toRelease.add(
+                        uuid
+                );
+
+                continue;
+            }
+
+
+            prisonerTimes.put(
+                    uuid,
+                    time
+            );
+
+
+            player.sendActionBar(
+
+                    component(
+
+                            getMessage(
+                                    "actionbar-timer"
+                            )
+
+                                    .replace(
+                                            "%mins%",
+                                            String.valueOf(
+                                                    time / 60
+                                            )
+                                    )
+
+                                    .replace(
+                                            "%secs%",
+                                            String.valueOf(
+                                                    time % 60
+                                            )
+                                    )
+                    )
+            );
         }
 
-        // Освобождаем вне цикла
-        for (UUID uuid : toRelease) {
-            releasePlayer(uuid);
+
+        for (
+                UUID uuid :
+                toRelease
+        ) {
+
+            releasePlayer(
+                    uuid
+            );
         }
     }
 
-    // ─── Проверки ───
 
-    public boolean isJailed(UUID uuid) {
-        return prisonerTimes.containsKey(uuid);
+    public boolean isJailed(
+            UUID uuid
+    ) {
+
+        return prisonerTimes.containsKey(
+                uuid
+        );
     }
 
-    public int getTimeRemaining(UUID uuid) {
-        return prisonerTimes.getOrDefault(uuid, 0);
+
+    public int getTimeRemaining(
+            UUID uuid
+    ) {
+
+        return prisonerTimes.getOrDefault(
+                uuid,
+                0
+        );
     }
 
-    public Location getCellLocation(UUID uuid) {
-        return prisonerCells.get(uuid);
+
+    public Location getCellLocation(
+            UUID uuid
+    ) {
+
+        Location location =
+                prisonerCells.get(
+                        uuid
+                );
+
+
+        return location == null
+                ? null
+                : location.clone();
     }
+
 
     public Map<UUID, Integer> getAllPrisoners() {
-        return Collections.unmodifiableMap(prisonerTimes);
+
+        return Collections.unmodifiableMap(
+                prisonerTimes
+        );
     }
 
+
     public double getCellRadius() {
+
         return cellRadius;
     }
 
+
     public List<String> getAllowedCommands() {
-        return allowedCommands;
+
+        return Collections.unmodifiableList(
+                allowedCommands
+        );
     }
+
 
     public Location getReleaseLocation() {
-        return releaseLocation;
+
+        return releaseLocation == null
+                ? null
+                : releaseLocation.clone();
     }
 
-    // ─── Получение значений из конфига ───
 
-    public int getSentenceTime(String key) {
-        return plugin.getConfig().getInt("sentences." + key,
-                plugin.getConfig().getInt("sentences.default", 600));
+    public int getCellCount() {
+
+        return cells.size();
     }
 
-    public String getMessage(String key) {
-        return plugin.getConfig().getString("messages." + key, key);
+
+    public Set<String> getCellIds() {
+
+        return Collections.unmodifiableSet(
+                cells.keySet()
+        );
     }
 
-    // ─── Вспомогательные методы ───
 
     public Location getRandomCell() {
-        if (cellLocations.isEmpty()) {
-            plugin.getLogger().warning("Нет доступных камер!");
-            return Bukkit.getWorlds().get(0).getSpawnLocation();
+
+        if (cells.isEmpty()) {
+
+            return null;
         }
-        Random random = new Random();
-        return cellLocations.get(random.nextInt(cellLocations.size())).clone();
+
+
+        List<Location> list =
+                new ArrayList<>(
+                        cells.values()
+                );
+
+
+        return list.get(
+                new Random().nextInt(
+                        list.size()
+                )
+        ).clone();
     }
 
-    /**
-     * Перевод цветовых кодов (&a, &b и т.д.)
-     */
-    public static String colorize(String message) {
-        if (message == null) return "";
-        return ChatColor.translateAlternateColorCodes('&', message);
-    }
 
-    /**
-     * Форматирование времени с правильным склонением.
-     * Например: "6 минут", "3 минуты", "1 минута"
-     */
-    public String formatTimeWords(int totalSeconds) {
-        int mins = totalSeconds / 60;
-        int secs = totalSeconds % 60;
+    public boolean setCell(
+            String id,
+            Location location
+    ) {
 
-        if (mins > 0 && secs == 0) {
-            return mins + " " + minuteWord(mins);
-        } else if (mins > 0) {
-            return mins + " " + minuteWord(mins) + " " + secs + " " + secondWord(secs);
-        } else {
-            return secs + " " + secondWord(secs);
+        if (
+                id == null
+                        || id.isBlank()
+                        || location == null
+                        || location.getWorld() == null
+        ) {
+
+            return false;
         }
+
+
+        String path =
+                "cells." + id;
+
+
+        plugin.getConfig().set(
+                path + ".world",
+                location.getWorld().getName()
+        );
+
+        plugin.getConfig().set(
+                path + ".x",
+                location.getX()
+        );
+
+        plugin.getConfig().set(
+                path + ".y",
+                location.getY()
+        );
+
+        plugin.getConfig().set(
+                path + ".z",
+                location.getZ()
+        );
+
+        plugin.getConfig().set(
+                path + ".yaw",
+                location.getYaw()
+        );
+
+        plugin.getConfig().set(
+                path + ".pitch",
+                location.getPitch()
+        );
+
+
+        plugin.saveConfig();
+
+        reloadSettings();
+
+        return true;
     }
 
-    /**
-     * Русское склонение слова «минута»
-     */
-    private String minuteWord(int n) {
-        int abs = Math.abs(n) % 100;
-        int last = abs % 10;
-        if (abs >= 11 && abs <= 19) return "минут";
-        if (last == 1) return "минута";
-        if (last >= 2 && last <= 4) return "минуты";
+
+    public boolean removeCell(
+            String id
+    ) {
+
+        if (!cells.containsKey(id)) {
+
+            return false;
+        }
+
+
+        plugin.getConfig().set(
+                "cells." + id,
+                null
+        );
+
+        plugin.saveConfig();
+
+        reloadSettings();
+
+        return true;
+    }
+
+
+    public void setRelease(
+            Location location
+    ) {
+
+        plugin.getConfig().set(
+                "release.world",
+                location.getWorld().getName()
+        );
+
+        plugin.getConfig().set(
+                "release.x",
+                location.getX()
+        );
+
+        plugin.getConfig().set(
+                "release.y",
+                location.getY()
+        );
+
+        plugin.getConfig().set(
+                "release.z",
+                location.getZ()
+        );
+
+        plugin.getConfig().set(
+                "release.yaw",
+                location.getYaw()
+        );
+
+        plugin.getConfig().set(
+                "release.pitch",
+                location.getPitch()
+        );
+
+
+        plugin.saveConfig();
+
+        reloadSettings();
+    }
+
+
+    public int getSentenceTime(
+            String key
+    ) {
+
+        return plugin.getConfig().getInt(
+
+                "sentences." + key,
+
+                plugin.getConfig().getInt(
+                        "sentences.default",
+                        600
+                )
+        );
+    }
+
+
+    public String getMessage(
+            String key
+    ) {
+
+        return plugin.getConfig().getString(
+                "messages." + key,
+                key
+        );
+    }
+
+
+    public String formatTimeWords(
+            int seconds
+    ) {
+
+        int mins =
+                seconds / 60;
+
+        int secs =
+                seconds % 60;
+
+
+        if (
+                mins > 0
+                        && secs == 0
+        ) {
+
+            return mins +
+                    " " +
+                    minuteWord(mins);
+        }
+
+
+        if (mins > 0) {
+
+            return mins +
+                    " " +
+                    minuteWord(mins) +
+                    " " +
+                    secs +
+                    " " +
+                    secondWord(secs);
+        }
+
+
+        return secs +
+                " " +
+                secondWord(secs);
+    }
+
+
+    private String minuteWord(
+            int n
+    ) {
+
+        int x =
+                Math.abs(n) % 100;
+
+        int last =
+                x % 10;
+
+
+        if (
+                x >= 11
+                        && x <= 19
+        ) {
+
+            return "минут";
+        }
+
+
+        if (last == 1) {
+
+            return "минута";
+        }
+
+
+        if (
+                last >= 2
+                        && last <= 4
+        ) {
+
+            return "минуты";
+        }
+
+
         return "минут";
     }
 
-    /**
-     * Русское склонение слова «секунда»
-     */
-    private String secondWord(int n) {
-        int abs = Math.abs(n) % 100;
-        int last = abs % 10;
-        if (abs >= 11 && abs <= 19) return "секунд";
-        if (last == 1) return "секунда";
-        if (last >= 2 && last <= 4) return "секунды";
+
+    private String secondWord(
+            int n
+    ) {
+
+        int x =
+                Math.abs(n) % 100;
+
+        int last =
+                x % 10;
+
+
+        if (
+                x >= 11
+                        && x <= 19
+        ) {
+
+            return "секунд";
+        }
+
+
+        if (last == 1) {
+
+            return "секунда";
+        }
+
+
+        if (
+                last >= 2
+                        && last <= 4
+        ) {
+
+            return "секунды";
+        }
+
+
         return "секунд";
+    }
+
+
+    public static String colorize(
+            String text
+    ) {
+
+        if (text == null) {
+
+            return "";
+        }
+
+
+        return LEGACY.serialize(
+                LEGACY.deserialize(
+                        text
+                )
+        );
+    }
+
+
+    public static Component component(
+            String text
+    ) {
+
+        return LEGACY.deserialize(
+                text == null
+                        ? ""
+                        : text
+        );
     }
 }
