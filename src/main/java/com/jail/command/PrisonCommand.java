@@ -26,11 +26,11 @@ import java.util.stream.Collectors;
 /**
  * Главная команда управления тюрьмой.
  *
- * Основная команда:
+ * Использование:
  *
  * /prison
  *
- * Доступные действия:
+ * Доступные команды:
  *
  * /prison jail <игрок> [минуты]
  * /prison release <игрок>
@@ -71,6 +71,10 @@ public final class PrisonCommand
             String[] args
     ) {
 
+        JailManager manager =
+                plugin.getJailManager();
+
+
         /*
          * Проверяем права администратора.
          */
@@ -82,26 +86,23 @@ public final class PrisonCommand
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
-                            plugin
-                                    .getJailManager()
-                                    .getMessage(
-                                            "no-permission"
-                                    )
+
+                            manager.getMessage(
+                                    "no-permission"
+                            )
                     )
             );
+
 
             return true;
         }
 
 
-        JailManager manager =
-                plugin.getJailManager();
-
-
         /*
-         * Если аргументов нет,
-         * показываем помощь.
+         * Если команда введена без аргументов,
+         * показываем справку.
          */
 
         if (args.length == 0) {
@@ -196,7 +197,9 @@ public final class PrisonCommand
 
 
                 sender.sendMessage(
+
                         JailManager.component(
+
                                 manager.getMessage(
                                         "admin-reloaded"
                                 )
@@ -220,7 +223,7 @@ public final class PrisonCommand
     /**
      * /prison jail <игрок> [минуты]
      *
-     * Заключает игрока вручную.
+     * Заключает игрока в тюрьму.
      */
     private void jail(
             CommandSender sender,
@@ -235,12 +238,15 @@ public final class PrisonCommand
         if (args.length < 2) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "usage-jail"
                             )
                     )
             );
+
 
             return;
         }
@@ -259,19 +265,23 @@ public final class PrisonCommand
         if (target == null) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "admin-player-not-found"
                             )
                     )
             );
 
+
             return;
         }
 
 
         /*
-         * Стандартный срок.
+         * По умолчанию используется
+         * срок из sentences.default.
          */
 
         int seconds =
@@ -282,7 +292,7 @@ public final class PrisonCommand
 
         /*
          * Если указаны минуты,
-         * используем их.
+         * используем указанный срок.
          */
 
         if (args.length >= 3) {
@@ -298,12 +308,15 @@ public final class PrisonCommand
                 if (minutes <= 0) {
 
                     sender.sendMessage(
+
                             JailManager.component(
+
                                     manager.getMessage(
                                             "invalid-number"
                                     )
                             )
                     );
+
 
                     return;
                 }
@@ -318,12 +331,15 @@ public final class PrisonCommand
             ) {
 
                 sender.sendMessage(
+
                         JailManager.component(
+
                                 manager.getMessage(
                                         "invalid-number"
                                 )
                         )
                 );
+
 
                 return;
             }
@@ -332,21 +348,28 @@ public final class PrisonCommand
 
         /*
          * Заключаем игрока.
+         *
+         * Причина тоже будет русской.
          */
 
         manager.jailPlayer(
+
                 target,
+
                 seconds,
+
                 "заключение администратором"
         );
 
 
         /*
-         * Сообщаем игроку.
+         * Сообщение игроку.
          */
 
         target.sendMessage(
+
                 JailManager.component(
+
                         manager.getMessage(
                                 "admin-jail-notify"
                         )
@@ -355,7 +378,7 @@ public final class PrisonCommand
 
 
         /*
-         * Сообщаем администратору.
+         * Сообщение администратору.
          */
 
         sender.sendMessage(
@@ -397,12 +420,15 @@ public final class PrisonCommand
         if (args.length < 2) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "usage-release"
                             )
                     )
             );
+
 
             return;
         }
@@ -417,12 +443,15 @@ public final class PrisonCommand
         if (target == null) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "admin-player-not-found"
                             )
                     )
             );
+
 
             return;
         }
@@ -435,12 +464,15 @@ public final class PrisonCommand
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "admin-not-jailed"
                             )
                     )
             );
+
 
             return;
         }
@@ -451,16 +483,20 @@ public final class PrisonCommand
          */
 
         manager.releasePlayer(
+
                 target.getUniqueId()
+
         );
 
 
         /*
-         * Дополнительное сообщение игроку.
+         * Дополнительное уведомление игрока.
          */
 
         target.sendMessage(
+
                 JailManager.component(
+
                         manager.getMessage(
                                 "admin-release-notify"
                         )
@@ -493,7 +529,7 @@ public final class PrisonCommand
     /**
      * /prison list
      *
-     * Показывает всех заключённых.
+     * Показывает список заключённых.
      */
     private void list(
             CommandSender sender,
@@ -501,7 +537,9 @@ public final class PrisonCommand
     ) {
 
         sender.sendMessage(
+
                 JailManager.component(
+
                         manager.getMessage(
                                 "admin-list-header"
                         )
@@ -520,12 +558,15 @@ public final class PrisonCommand
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "admin-list-empty"
                             )
                     )
             );
+
 
             return;
         }
@@ -550,20 +591,19 @@ public final class PrisonCommand
                     entry.getValue();
 
 
-            /*
-             * Получаем имя игрока.
-             */
-
             String name =
                     Optional
                             .ofNullable(
+
                                     Bukkit
                                             .getOfflinePlayer(
                                                     uuid
                                             )
                                             .getName()
+
                             )
                             .orElse(
+
                                     uuid
                                             .toString()
                                             .substring(
@@ -572,10 +612,6 @@ public final class PrisonCommand
                                             )
                             );
 
-
-            /*
-             * Форматируем оставшееся время.
-             */
 
             String formattedTime =
                     manager.formatTime(
@@ -618,21 +654,20 @@ public final class PrisonCommand
             JailManager manager
     ) {
 
-        /*
-         * Команда доступна только игроку.
-         */
-
         if (
                 !(sender instanceof Player player)
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "player-only"
                             )
                     )
             );
+
 
             return;
         }
@@ -642,14 +677,12 @@ public final class PrisonCommand
                 manager.getRandomCell();
 
 
-        /*
-         * Камер нет.
-         */
-
         if (cell == null) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "no-cells"
                             )
@@ -658,20 +691,19 @@ public final class PrisonCommand
 
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "no-cells-hint"
                             )
                     )
             );
 
+
             return;
         }
 
-
-        /*
-         * Телепортируем.
-         */
 
         player.teleport(
                 cell
@@ -679,7 +711,9 @@ public final class PrisonCommand
 
 
         sender.sendMessage(
+
                 JailManager.component(
+
                         manager.getMessage(
                                 "admin-tp"
                         )
@@ -691,7 +725,7 @@ public final class PrisonCommand
     /**
      * /prison setcell [название]
      *
-     * Создаёт камеру в текущем месте игрока.
+     * Создаёт камеру в текущем месте.
      */
     private void setCell(
             CommandSender sender,
@@ -699,21 +733,20 @@ public final class PrisonCommand
             String[] args
     ) {
 
-        /*
-         * Команда доступна только игроку.
-         */
-
         if (
                 !(sender instanceof Player player)
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "player-only"
                             )
                     )
             );
+
 
             return;
         }
@@ -735,7 +768,7 @@ public final class PrisonCommand
         } else {
 
             /*
-             * Иначе автоматически создаём:
+             * Автоматическое название:
              *
              * cell-1
              * cell-2
@@ -765,10 +798,15 @@ public final class PrisonCommand
         if (!success) {
 
             sender.sendMessage(
+
                     JailManager.component(
-                            "&cНе удалось создать камеру."
+
+                            manager.getMessage(
+                                    "cell-create-error"
+                            )
                     )
             );
+
 
             return;
         }
@@ -795,29 +833,27 @@ public final class PrisonCommand
     /**
      * /prison setrelease
      *
-     * Устанавливает точку освобождения
-     * в текущем месте игрока.
+     * Устанавливает точку освобождения.
      */
     private void setRelease(
             CommandSender sender,
             JailManager manager
     ) {
 
-        /*
-         * Только игрок.
-         */
-
         if (
                 !(sender instanceof Player player)
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "player-only"
                             )
                     )
             );
+
 
             return;
         }
@@ -829,7 +865,9 @@ public final class PrisonCommand
 
 
         sender.sendMessage(
+
                 JailManager.component(
+
                         manager.getMessage(
                                 "release-set"
                         )
@@ -867,29 +905,24 @@ public final class PrisonCommand
         );
 
 
-        /*
-         * Если камер нет.
-         */
-
         if (
                 manager.getCellCount() == 0
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "no-cells-hint"
                             )
                     )
             );
 
+
             return;
         }
 
-
-        /*
-         * Выводим камеры.
-         */
 
         for (
                 String id :
@@ -929,12 +962,15 @@ public final class PrisonCommand
         if (args.length < 2) {
 
             sender.sendMessage(
+
                     JailManager.component(
+
                             manager.getMessage(
                                     "usage-removecell"
                             )
                     )
             );
+
 
             return;
         }
@@ -943,10 +979,6 @@ public final class PrisonCommand
         String id =
                 args[1];
 
-
-        /*
-         * Проверяем и удаляем камеру.
-         */
 
         if (
                 !manager.removeCell(
@@ -969,6 +1001,7 @@ public final class PrisonCommand
                                     )
                     )
             );
+
 
             return;
         }
@@ -993,7 +1026,7 @@ public final class PrisonCommand
 
 
     /**
-     * Показывает помощь по команде /prison.
+     * Показывает справку по /prison.
      */
     private void help(
             CommandSender sender
@@ -1001,76 +1034,117 @@ public final class PrisonCommand
 
         sender.sendMessage("");
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&6&l⛓ Система тюрьмы"
                 )
         );
 
+
         sender.sendMessage("");
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison jail <игрок> [минуты]"
-                                + " &7— заключить игрока"
+                                +
+                                " &7— заключить игрока"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison release <игрок>"
-                                + " &7— освободить игрока"
+                                +
+                                " &7— освободить игрока"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison list"
-                                + " &7— список заключённых"
+                                +
+                                " &7— список заключённых"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison tp"
-                                + " &7— телепортироваться в камеру"
+                                +
+                                " &7— телепортироваться в камеру"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison setcell [название]"
-                                + " &7— создать камеру"
+                                +
+                                " &7— создать камеру"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison setrelease"
-                                + " &7— установить точку освобождения"
+                                +
+                                " &7— установить точку освобождения"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison cells"
-                                + " &7— список камер"
+                                +
+                                " &7— список камер"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison removecell <название>"
-                                + " &7— удалить камеру"
+                                +
+                                " &7— удалить камеру"
                 )
         );
 
+
         sender.sendMessage(
+
                 JailManager.component(
+
                         "&e/prison reload"
-                                + " &7— перезагрузить настройки"
+                                +
+                                " &7— перезагрузить настройки"
                 )
         );
+
 
         sender.sendMessage("");
     }
@@ -1088,12 +1162,7 @@ public final class PrisonCommand
     ) {
 
         /*
-         * Первый аргумент:
-         *
-         * /prison jail
-         * /prison release
-         * /prison list
-         * ...
+         * Первый аргумент.
          */
 
         if (args.length == 1) {
@@ -1103,22 +1172,15 @@ public final class PrisonCommand
                     List.of(
 
                             "jail",
-
                             "release",
-
                             "list",
-
                             "tp",
-
                             "setcell",
-
                             "setrelease",
-
                             "cells",
-
                             "removecell",
-
                             "reload"
+
                     ),
 
                     args[0]
@@ -1127,16 +1189,17 @@ public final class PrisonCommand
 
 
         /*
-         * Второй аргумент команды jail —
-         * имя игрока.
+         * Игрок для /prison jail.
          */
 
         if (
                 args.length == 2
+
                         &&
-                        args[0].equalsIgnoreCase(
-                                "jail"
-                        )
+
+                args[0].equalsIgnoreCase(
+                        "jail"
+                )
         ) {
 
             return filter(
@@ -1155,36 +1218,40 @@ public final class PrisonCommand
 
 
         /*
-         * Второй аргумент release —
-         * имя заключённого.
+         * Игрок для /prison release.
          */
 
         if (
                 args.length == 2
+
                         &&
-                        args[0].equalsIgnoreCase(
-                                "release"
-                        )
+
+                args[0].equalsIgnoreCase(
+                        "release"
+                )
         ) {
 
             return filter(
+
                     prisonerNames(),
+
                     args[1]
             );
         }
 
 
         /*
-         * Второй аргумент removecell —
-         * название камеры.
+         * Камера для /prison removecell.
          */
 
         if (
                 args.length == 2
+
                         &&
-                        args[0].equalsIgnoreCase(
-                                "removecell"
-                        )
+
+                args[0].equalsIgnoreCase(
+                        "removecell"
+                )
         ) {
 
             return filter(
@@ -1205,8 +1272,8 @@ public final class PrisonCommand
 
 
     /**
-     * Получает имена заключённых,
-     * которые сейчас находятся онлайн.
+     * Возвращает имена заключённых,
+     * находящихся онлайн.
      */
     private List<String> prisonerNames() {
 
@@ -1252,6 +1319,7 @@ public final class PrisonCommand
                 .stream()
 
                 .filter(
+
                         value ->
 
                                 value
