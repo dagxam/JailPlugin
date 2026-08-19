@@ -27,35 +27,107 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
+
+/**
+ * Основной менеджер системы тюрьмы.
+ *
+ * Отвечает за:
+ *
+ * - камеры;
+ * - заключённых;
+ * - сроки наказания;
+ * - сохранение заключённых;
+ * - освобождение;
+ * - таймер;
+ * - точку освобождения;
+ * - сообщения игрокам.
+ */
 public final class JailManager {
 
+    /**
+     * Преобразователь старого формата цветов Minecraft:
+     *
+     * &c
+     * &a
+     * &7
+     * &l
+     *
+     * в Adventure Component.
+     */
     private static final LegacyComponentSerializer LEGACY =
             LegacyComponentSerializer.legacyAmpersand();
 
+
     private final JailPlugin plugin;
 
+    /**
+     * Файл с текущими заключёнными.
+     */
     private final File dataFile;
 
+
+    /**
+     * Срок каждого заключённого в секундах.
+     */
     private final Map<UUID, Integer> prisonerTimes =
             new HashMap<>();
 
+
+    /**
+     * Камера, в которой находится заключённый.
+     */
     private final Map<UUID, Location> prisonerCells =
             new HashMap<>();
 
+
+    /**
+     * Все камеры тюрьмы.
+     *
+     * Например:
+     *
+     * cell-1
+     * cell-2
+     * cell-3
+     */
     private final Map<String, Location> cells =
             new LinkedHashMap<>();
 
+
+    /**
+     * Точка освобождения.
+     */
     private Location releaseLocation;
 
+
+    /**
+     * Радиус, за который заключённому нельзя выходить.
+     */
     private double cellRadius;
 
+
+    /**
+     * Команды, разрешённые заключённым.
+     */
     private List<String> allowedCommands =
             new ArrayList<>();
 
+
+    /**
+     * Показывать ли всему серверу сообщение об аресте.
+     */
     private boolean broadcastArrests;
 
 
-    public JailManager(JailPlugin plugin) {
+    /**
+     * Генератор случайных камер.
+     */
+    private final Random random =
+            new Random();
+
+
+    public JailManager(
+            JailPlugin plugin
+    ) {
 
         this.plugin = plugin;
 
@@ -68,6 +140,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Загружает настройки из config.yml.
+     */
     public void reloadSettings() {
 
         plugin.reloadConfig();
@@ -75,6 +150,10 @@ public final class JailManager {
         FileConfiguration config =
                 plugin.getConfig();
 
+
+        /*
+         * Загружаем камеры.
+         */
 
         cells.clear();
 
@@ -88,18 +167,22 @@ public final class JailManager {
             for (
                     String id :
                     config
-                            .getConfigurationSection("cells")
+                            .getConfigurationSection(
+                                    "cells"
+                            )
                             .getKeys(false)
             ) {
 
                 String path =
                         "cells." + id;
 
+
                 Location location =
                         readLocation(
                                 config,
                                 path
                         );
+
 
                 if (location != null) {
 
@@ -111,6 +194,10 @@ public final class JailManager {
             }
         }
 
+
+        /*
+         * Загружаем точку освобождения.
+         */
 
         releaseLocation =
                 readLocation(
@@ -126,6 +213,7 @@ public final class JailManager {
                             ? null
                             : Bukkit.getWorlds().get(0);
 
+
             if (world != null) {
 
                 releaseLocation =
@@ -133,6 +221,10 @@ public final class JailManager {
             }
         }
 
+
+        /*
+         * Радиус камеры.
+         */
 
         cellRadius =
                 Math.max(
@@ -144,6 +236,10 @@ public final class JailManager {
                 );
 
 
+        /*
+         * Сообщение всему серверу об аресте.
+         */
+
         broadcastArrests =
                 config.getBoolean(
                         "broadcast-arrests",
@@ -151,8 +247,13 @@ public final class JailManager {
                 );
 
 
+        /*
+         * Разрешённые команды.
+         */
+
         allowedCommands =
                 new ArrayList<>();
+
 
         for (
                 String command :
@@ -162,14 +263,18 @@ public final class JailManager {
         ) {
 
             allowedCommands.add(
-                    command.toLowerCase(
-                            Locale.ROOT
-                    )
+                    command
+                            .toLowerCase(
+                                    Locale.ROOT
+                            )
             );
         }
     }
 
 
+    /**
+     * Читает Location из YAML.
+     */
     private Location readLocation(
             FileConfiguration config,
             String path
@@ -180,6 +285,7 @@ public final class JailManager {
                         path + ".world"
                 );
 
+
         if (worldName == null) {
 
             return null;
@@ -187,14 +293,17 @@ public final class JailManager {
 
 
         World world =
-                Bukkit.getWorld(worldName);
+                Bukkit.getWorld(
+                        worldName
+                );
+
 
         if (world == null) {
 
             plugin.getLogger().warning(
                     "Мир '" +
                             worldName +
-                            "' не найден для " +
+                            "' не найден для настройки: " +
                             path
             );
 
@@ -231,6 +340,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Загружает заключённых из prisoners.yml.
+     */
     public void loadPrisoners() {
 
         prisonerTimes.clear();
@@ -277,8 +389,10 @@ public final class JailManager {
                                 uuidText
                         );
 
+
                 String path =
-                        "prisoners." + uuidText;
+                        "prisoners." +
+                                uuidText;
 
 
                 int time =
@@ -303,6 +417,11 @@ public final class JailManager {
                 Location cell = null;
 
 
+                /*
+                 * Сначала пытаемся найти камеру
+                 * по её названию.
+                 */
+
                 if (cellId != null) {
 
                     cell =
@@ -312,6 +431,11 @@ public final class JailManager {
                 }
 
 
+                /*
+                 * Если камера больше не существует,
+                 * пробуем восстановить координаты.
+                 */
+
                 if (cell == null) {
 
                     String worldName =
@@ -320,10 +444,12 @@ public final class JailManager {
                                     "world"
                             );
 
+
                     World world =
                             Bukkit.getWorld(
                                     worldName
                             );
+
 
                     if (world != null) {
 
@@ -342,6 +468,16 @@ public final class JailManager {
 
                                         data.getDouble(
                                                 path + ".z"
+                                        ),
+
+                                        (float) data.getDouble(
+                                                path + ".yaw",
+                                                0.0
+                                        ),
+
+                                        (float) data.getDouble(
+                                                path + ".pitch",
+                                                0.0
                                         )
                                 );
                     }
@@ -355,23 +491,28 @@ public final class JailManager {
                             time
                     );
 
+
                     prisonerCells.put(
                             uuid,
                             cell
                     );
                 }
 
+
             } catch (Exception exception) {
 
                 plugin.getLogger().warning(
-                        "Не удалось загрузить заключённого: "
-                                + uuidText
+                        "Не удалось загрузить заключённого: " +
+                                uuidText
                 );
             }
         }
     }
 
 
+    /**
+     * Сохраняет всех заключённых.
+     */
     public void savePrisoners() {
 
         FileConfiguration data =
@@ -388,6 +529,7 @@ public final class JailManager {
                             uuid
                     );
 
+
             if (
                     cell == null
                             || cell.getWorld() == null
@@ -398,17 +540,31 @@ public final class JailManager {
 
 
             String path =
-                    "prisoners." + uuid;
+                    "prisoners." +
+                            uuid;
 
+
+            /*
+             * Сохраняем оставшееся время.
+             */
 
             data.set(
                     path + ".time",
-                    prisonerTimes.get(uuid)
+                    prisonerTimes.get(
+                            uuid
+                    )
             );
 
 
+            /*
+             * Если камера известна по имени,
+             * сохраняем её название.
+             */
+
             String cellId =
-                    findCellId(cell);
+                    findCellId(
+                            cell
+                    );
 
 
             if (cellId != null) {
@@ -420,24 +576,44 @@ public final class JailManager {
 
             } else {
 
+                /*
+                 * Если камера была удалена,
+                 * сохраняем её координаты.
+                 */
+
                 data.set(
                         path + ".world",
                         cell.getWorld().getName()
                 );
+
 
                 data.set(
                         path + ".x",
                         cell.getX()
                 );
 
+
                 data.set(
                         path + ".y",
                         cell.getY()
                 );
 
+
                 data.set(
                         path + ".z",
                         cell.getZ()
+                );
+
+
+                data.set(
+                        path + ".yaw",
+                        cell.getYaw()
+                );
+
+
+                data.set(
+                        path + ".pitch",
+                        cell.getPitch()
                 );
             }
         }
@@ -452,7 +628,7 @@ public final class JailManager {
         } catch (IOException exception) {
 
             plugin.getLogger().severe(
-                    "Не удалось сохранить prisoners.yml"
+                    "Не удалось сохранить файл prisoners.yml."
             );
 
             exception.printStackTrace();
@@ -460,6 +636,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Находит название камеры по Location.
+     */
     private String findCellId(
             Location location
     ) {
@@ -477,7 +656,10 @@ public final class JailManager {
                     cell.getWorld().equals(
                             location.getWorld()
                     )
-                            && cell.distanceSquared(
+
+                            &&
+
+                    cell.distanceSquared(
                             location
                     ) < 0.01
             ) {
@@ -486,25 +668,47 @@ public final class JailManager {
             }
         }
 
+
         return null;
     }
 
 
+    /**
+     * Заключает игрока в тюрьму.
+     *
+     * @param player игрок
+     * @param seconds срок в секундах
+     * @param reason причина заключения
+     */
     public void jailPlayer(
             Player player,
             int seconds,
             String reason
     ) {
 
+        /*
+         * Без камер заключить игрока невозможно.
+         */
+
         if (cells.isEmpty()) {
 
             player.sendMessage(
-                    colorize(
+                    component(
                             getMessage(
                                     "no-cells"
                             )
                     )
             );
+
+
+            player.sendMessage(
+                    component(
+                            getMessage(
+                                    "no-cells-hint"
+                            )
+                    )
+            );
+
 
             return;
         }
@@ -514,19 +718,37 @@ public final class JailManager {
                 player.getUniqueId();
 
 
+        /*
+         * Если игрок уже сидит,
+         * добавляем новый срок к старому.
+         */
+
         int newTime =
                 prisonerTimes.getOrDefault(
                         uuid,
                         0
                 )
-                        + Math.max(
-                        1,
-                        seconds
-                );
 
+                        +
+
+                        Math.max(
+                                1,
+                                seconds
+                        );
+
+
+        /*
+         * Выбираем случайную камеру.
+         */
 
         Location cell =
                 getRandomCell();
+
+
+        if (cell == null) {
+
+            return;
+        }
 
 
         prisonerTimes.put(
@@ -541,23 +763,33 @@ public final class JailManager {
         );
 
 
+        /*
+         * Телепортируем игрока.
+         */
+
         player.teleport(
                 cell
         );
 
 
+        /*
+         * Сообщение игроку.
+         */
+
         player.sendMessage("");
 
+
         player.sendMessage(
-                colorize(
+                component(
                         getMessage(
                                 "arrest-header"
                         )
                 )
         );
 
+
         player.sendMessage(
-                colorize(
+                component(
                         getMessage(
                                 "arrest-reason"
                         )
@@ -568,8 +800,9 @@ public final class JailManager {
                 )
         );
 
+
         player.sendMessage(
-                colorize(
+                component(
                         getMessage(
                                 "arrest-time"
                         )
@@ -582,20 +815,51 @@ public final class JailManager {
                 )
         );
 
+
+        String cellName =
+                findCellId(
+                        cell
+                );
+
+
+        if (cellName != null) {
+
+            player.sendMessage(
+                    component(
+                            getMessage(
+                                    "arrest-cell"
+                            )
+                                    .replace(
+                                            "%cell%",
+                                            cellName
+                                    )
+                    )
+            );
+        }
+
+
         player.sendMessage("");
 
 
+        /*
+         * Сообщение всему серверу.
+         */
+
         if (broadcastArrests) {
 
-            Bukkit.broadcastMessage(
-                    colorize(
+            Bukkit.broadcast(
+
+                    component(
+
                             getMessage(
                                     "broadcast-arrest"
                             )
+
                                     .replace(
                                             "%player%",
                                             player.getName()
                                     )
+
                                     .replace(
                                             "%reason%",
                                             reason
@@ -609,6 +873,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Освобождает игрока.
+     */
     public void releasePlayer(
             UUID uuid
     ) {
@@ -616,6 +883,7 @@ public final class JailManager {
         prisonerTimes.remove(
                 uuid
         );
+
 
         prisonerCells.remove(
                 uuid
@@ -641,18 +909,25 @@ public final class JailManager {
 
             player.sendMessage("");
 
+
             player.sendMessage(
-                    colorize(
+                    component(
                             getMessage(
                                     "release-chat"
                             )
                     )
             );
 
+
             player.sendMessage("");
 
 
+            /*
+             * Большой заголовок на экране.
+             */
+
             player.showTitle(
+
                     Title.title(
 
                             component(
@@ -690,6 +965,11 @@ public final class JailManager {
     }
 
 
+    /**
+     * Обновляет таймер заключённых.
+     *
+     * Вызывается каждую секунду.
+     */
     public void tickTimers() {
 
         List<UUID> toRelease =
@@ -711,21 +991,34 @@ public final class JailManager {
                     );
 
 
+            /*
+             * Игрок не заключён.
+             */
+
             if (current == null) {
 
                 continue;
             }
 
 
+            /*
+             * Уменьшаем срок на одну секунду.
+             */
+
             int time =
                     current - 1;
 
+
+            /*
+             * Срок закончился.
+             */
 
             if (time <= 0) {
 
                 toRelease.add(
                         uuid
                 );
+
 
                 continue;
             }
@@ -737,6 +1030,10 @@ public final class JailManager {
             );
 
 
+            /*
+             * Показываем красивый таймер.
+             */
+
             player.sendActionBar(
 
                     component(
@@ -746,22 +1043,20 @@ public final class JailManager {
                             )
 
                                     .replace(
-                                            "%mins%",
-                                            String.valueOf(
-                                                    time / 60
-                                            )
-                                    )
-
-                                    .replace(
-                                            "%secs%",
-                                            String.valueOf(
-                                                    time % 60
+                                            "%time%",
+                                            formatTime(
+                                                    time
                                             )
                                     )
                     )
             );
         }
 
+
+        /*
+         * Освобождаем игроков,
+         * у которых закончился срок.
+         */
 
         for (
                 UUID uuid :
@@ -775,6 +1070,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Проверяет, находится ли игрок в тюрьме.
+     */
     public boolean isJailed(
             UUID uuid
     ) {
@@ -785,6 +1083,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Возвращает оставшееся время.
+     */
     public int getTimeRemaining(
             UUID uuid
     ) {
@@ -796,6 +1097,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Возвращает камеру заключённого.
+     */
     public Location getCellLocation(
             UUID uuid
     ) {
@@ -812,6 +1116,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Возвращает всех заключённых.
+     */
     public Map<UUID, Integer> getAllPrisoners() {
 
         return Collections.unmodifiableMap(
@@ -820,12 +1127,18 @@ public final class JailManager {
     }
 
 
+    /**
+     * Радиус камеры.
+     */
     public double getCellRadius() {
 
         return cellRadius;
     }
 
 
+    /**
+     * Разрешённые команды.
+     */
     public List<String> getAllowedCommands() {
 
         return Collections.unmodifiableList(
@@ -834,6 +1147,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Возвращает точку освобождения.
+     */
     public Location getReleaseLocation() {
 
         return releaseLocation == null
@@ -842,12 +1158,18 @@ public final class JailManager {
     }
 
 
+    /**
+     * Количество камер.
+     */
     public int getCellCount() {
 
         return cells.size();
     }
 
 
+    /**
+     * Названия всех камер.
+     */
     public Set<String> getCellIds() {
 
         return Collections.unmodifiableSet(
@@ -856,6 +1178,9 @@ public final class JailManager {
     }
 
 
+    /**
+     * Возвращает случайную камеру.
+     */
     public Location getRandomCell() {
 
         if (cells.isEmpty()) {
@@ -871,13 +1196,16 @@ public final class JailManager {
 
 
         return list.get(
-                new Random().nextInt(
+                random.nextInt(
                         list.size()
                 )
         ).clone();
     }
 
 
+    /**
+     * Создаёт или изменяет камеру.
+     */
     public boolean setCell(
             String id,
             Location location
@@ -903,25 +1231,30 @@ public final class JailManager {
                 location.getWorld().getName()
         );
 
+
         plugin.getConfig().set(
                 path + ".x",
                 location.getX()
         );
+
 
         plugin.getConfig().set(
                 path + ".y",
                 location.getY()
         );
 
+
         plugin.getConfig().set(
                 path + ".z",
                 location.getZ()
         );
 
+
         plugin.getConfig().set(
                 path + ".yaw",
                 location.getYaw()
         );
+
 
         plugin.getConfig().set(
                 path + ".pitch",
@@ -931,17 +1264,26 @@ public final class JailManager {
 
         plugin.saveConfig();
 
+
         reloadSettings();
+
 
         return true;
     }
 
 
+    /**
+     * Удаляет камеру.
+     */
     public boolean removeCell(
             String id
     ) {
 
-        if (!cells.containsKey(id)) {
+        if (
+                !cells.containsKey(
+                        id
+                )
+        ) {
 
             return false;
         }
@@ -952,14 +1294,20 @@ public final class JailManager {
                 null
         );
 
+
         plugin.saveConfig();
 
+
         reloadSettings();
+
 
         return true;
     }
 
 
+    /**
+     * Устанавливает точку освобождения.
+     */
     public void setRelease(
             Location location
     ) {
@@ -969,25 +1317,30 @@ public final class JailManager {
                 location.getWorld().getName()
         );
 
+
         plugin.getConfig().set(
                 "release.x",
                 location.getX()
         );
+
 
         plugin.getConfig().set(
                 "release.y",
                 location.getY()
         );
 
+
         plugin.getConfig().set(
                 "release.z",
                 location.getZ()
         );
 
+
         plugin.getConfig().set(
                 "release.yaw",
                 location.getYaw()
         );
+
 
         plugin.getConfig().set(
                 "release.pitch",
@@ -997,91 +1350,144 @@ public final class JailManager {
 
         plugin.saveConfig();
 
+
         reloadSettings();
     }
 
 
+    /**
+     * Возвращает срок наказания.
+     */
     public int getSentenceTime(
             String key
     ) {
 
-        return plugin.getConfig().getInt(
+        return plugin
+                .getConfig()
+                .getInt(
 
-                "sentences." + key,
+                        "sentences." + key,
 
-                plugin.getConfig().getInt(
-                        "sentences.default",
-                        600
-                )
-        );
+                        plugin
+                                .getConfig()
+                                .getInt(
+                                        "sentences.default",
+                                        600
+                                )
+                );
     }
 
 
+    /**
+     * Получает сообщение из config.yml.
+     */
     public String getMessage(
             String key
     ) {
 
-        return plugin.getConfig().getString(
-                "messages." + key,
-                key
-        );
+        return plugin
+                .getConfig()
+                .getString(
+                        "messages." + key,
+                        key
+                );
     }
 
 
+    /**
+     * Форматирует время:
+     *
+     * 1 секунда
+     * 2 секунды
+     * 5 секунд
+     *
+     * 1 минута
+     * 2 минуты
+     * 5 минут
+     *
+     * 1 минута 20 секунд
+     */
+    public String formatTime(
+            int totalSeconds
+    ) {
+
+        int minutes =
+                totalSeconds / 60;
+
+
+        int seconds =
+                totalSeconds % 60;
+
+
+        if (minutes > 0 && seconds > 0) {
+
+            return minutes +
+                    " " +
+                    minuteWord(
+                            minutes
+                    ) +
+
+                    " " +
+
+                    seconds +
+                    " " +
+                    secondWord(
+                            seconds
+                    );
+        }
+
+
+        if (minutes > 0) {
+
+            return minutes +
+                    " " +
+                    minuteWord(
+                            minutes
+                    );
+        }
+
+
+        return seconds +
+                " " +
+                secondWord(
+                        seconds
+                );
+    }
+
+
+    /**
+     * Старый метод оставлен для совместимости.
+     */
     public String formatTimeWords(
             int seconds
     ) {
 
-        int mins =
-                seconds / 60;
-
-        int secs =
-                seconds % 60;
-
-
-        if (
-                mins > 0
-                        && secs == 0
-        ) {
-
-            return mins +
-                    " " +
-                    minuteWord(mins);
-        }
-
-
-        if (mins > 0) {
-
-            return mins +
-                    " " +
-                    minuteWord(mins) +
-                    " " +
-                    secs +
-                    " " +
-                    secondWord(secs);
-        }
-
-
-        return secs +
-                " " +
-                secondWord(secs);
+        return formatTime(
+                seconds
+        );
     }
 
 
+    /**
+     * Склонение слова "минута".
+     */
     private String minuteWord(
-            int n
+            int number
     ) {
 
-        int x =
-                Math.abs(n) % 100;
+        int value =
+                Math.abs(
+                        number
+                ) % 100;
+
 
         int last =
-                x % 10;
+                value % 10;
 
 
         if (
-                x >= 11
-                        && x <= 19
+                value >= 11
+                        && value <= 19
         ) {
 
             return "минут";
@@ -1107,20 +1513,26 @@ public final class JailManager {
     }
 
 
+    /**
+     * Склонение слова "секунда".
+     */
     private String secondWord(
-            int n
+            int number
     ) {
 
-        int x =
-                Math.abs(n) % 100;
+        int value =
+                Math.abs(
+                        number
+                ) % 100;
+
 
         int last =
-                x % 10;
+                value % 10;
 
 
         if (
-                x >= 11
-                        && x <= 19
+                value >= 11
+                        && value <= 19
         ) {
 
             return "секунд";
@@ -1146,6 +1558,27 @@ public final class JailManager {
     }
 
 
+    /**
+     * Преобразует &c, &a и другие
+     * цветовые коды в Component.
+     */
+    public static Component component(
+            String text
+    ) {
+
+        return LEGACY.deserialize(
+                text == null
+                        ? ""
+                        : text
+        );
+    }
+
+
+    /**
+     * Преобразует текст в Legacy-формат.
+     *
+     * Оставлено для совместимости.
+     */
     public static String colorize(
             String text
     ) {
@@ -1160,18 +1593,6 @@ public final class JailManager {
                 LEGACY.deserialize(
                         text
                 )
-        );
-    }
-
-
-    public static Component component(
-            String text
-    ) {
-
-        return LEGACY.deserialize(
-                text == null
-                        ? ""
-                        : text
         );
     }
 }
