@@ -9,9 +9,25 @@ import org.bukkit.command.CommandSender;
 
 import org.bukkit.entity.Player;
 
+
+/**
+ * Команда просмотра оставшегося срока.
+ *
+ * Использование:
+ *
+ * /jailtime
+ *
+ * Также доступен русский алиас:
+ *
+ * /срок
+ */
 public final class JailTimeCommand
         implements CommandExecutor {
 
+
+    /**
+     * Главный класс плагина.
+     */
     private final JailPlugin plugin;
 
 
@@ -23,6 +39,9 @@ public final class JailTimeCommand
     }
 
 
+    /**
+     * Обработка команды /jailtime.
+     */
     @Override
     public boolean onCommand(
             CommandSender sender,
@@ -31,12 +50,22 @@ public final class JailTimeCommand
             String[] args
     ) {
 
+        /*
+         * Команда предназначена для игроков.
+         */
+
         if (
                 !(sender instanceof Player player)
         ) {
 
             sender.sendMessage(
-                    "Только для игроков."
+                    JailManager.component(
+                            plugin
+                                    .getJailManager()
+                                    .getMessage(
+                                            "player-only"
+                                    )
+                    )
             );
 
             return true;
@@ -47,6 +76,11 @@ public final class JailTimeCommand
                 plugin.getJailManager();
 
 
+        /*
+         * Проверяем, находится ли игрок
+         * в тюрьме.
+         */
+
         if (
                 !manager.isJailed(
                         player.getUniqueId()
@@ -54,7 +88,7 @@ public final class JailTimeCommand
         ) {
 
             player.sendMessage(
-                    JailManager.colorize(
+                    JailManager.component(
                             manager.getMessage(
                                     "jailtime-free"
                             )
@@ -65,14 +99,39 @@ public final class JailTimeCommand
         }
 
 
+        /*
+         * Получаем оставшееся время.
+         */
+
         int time =
                 manager.getTimeRemaining(
                         player.getUniqueId()
                 );
 
 
+        /*
+         * Форматируем время по-русски.
+         *
+         * Например:
+         *
+         * 1 минута
+         * 2 минуты 15 секунд
+         * 5 минут
+         */
+
+        String formattedTime =
+                manager.formatTime(
+                        time
+                );
+
+
+        /*
+         * Отправляем игроку сообщение.
+         */
+
         player.sendMessage(
-                JailManager.colorize(
+
+                JailManager.component(
 
                         manager
                                 .getMessage(
@@ -80,17 +139,8 @@ public final class JailTimeCommand
                                 )
 
                                 .replace(
-                                        "%mins%",
-                                        String.valueOf(
-                                                time / 60
-                                        )
-                                )
-
-                                .replace(
-                                        "%secs%",
-                                        String.valueOf(
-                                                time % 60
-                                        )
+                                        "%time%",
+                                        formattedTime
                                 )
                 )
         );
