@@ -2,60 +2,155 @@ package com.jail.listener;
 
 import com.jail.JailManager;
 import com.jail.JailPlugin;
-import org.bukkit.entity.*;
+
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+
 import org.bukkit.event.entity.EntityDeathEvent;
 
-public class DeathListener implements Listener {
+public final class DeathListener
+        implements Listener {
 
     private final JailPlugin plugin;
 
-    public DeathListener(JailPlugin plugin) {
+
+    public DeathListener(
+            JailPlugin plugin
+    ) {
+
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onEntityDeath(EntityDeathEvent event) {
-        LivingEntity victim = event.getEntity();
-        Player killer = victim.getKiller();
 
-        // Нет убийцы-игрока — игнорируем
-        if (killer == null) return;
+    @EventHandler(
+            priority = EventPriority.MONITOR,
+            ignoreCancelled = true
+    )
+    public void onDeath(
+            EntityDeathEvent event
+    ) {
 
-        // Проверка иммунитета
-        if (killer.hasPermission("prison.bypass")) return;
+        LivingEntity victim =
+                event.getEntity();
 
-        JailManager manager = plugin.getJailManager();
-        String reason = null;
-        String sentenceKey = null;
 
-        // Определяем тип убийства
-        if (victim instanceof Player) {
-            // Самоубийство — не наказываем
-            if (killer.getUniqueId().equals(victim.getUniqueId())) return;
-            reason = manager.getMessage("reason-player-kill");
-            sentenceKey = "player-kill";
+        Player killer =
+                victim.getKiller();
 
-        } else if (victim.getType() == EntityType.VILLAGER) {
-            reason = manager.getMessage("reason-villager-kill");
-            sentenceKey = "villager-kill";
 
-        } else if (victim.getType() == EntityType.IRON_GOLEM) {
-            reason = manager.getMessage("reason-golem-kill");
-            sentenceKey = "golem-kill";
+        if (killer == null) {
 
-        } else if (victim.getType() == EntityType.WANDERING_TRADER) {
-            reason = manager.getMessage("reason-trader-kill");
-            sentenceKey = "trader-kill";
+            return;
         }
 
-        // Если тип не подходит — выходим
-        if (reason == null) return;
 
-        // Сажаем в тюрьму
-        int seconds = manager.getSentenceTime(sentenceKey);
-        manager.jailPlayer(killer, seconds, reason);
+        if (
+                killer.hasPermission(
+                        "prison.bypass"
+                )
+        ) {
+
+            return;
+        }
+
+
+        JailManager manager =
+                plugin.getJailManager();
+
+
+        String reason = null;
+
+        String key = null;
+
+
+        if (victim instanceof Player) {
+
+            if (
+                    killer.getUniqueId()
+                            .equals(
+                                    victim.getUniqueId()
+                            )
+            ) {
+
+                return;
+            }
+
+
+            reason =
+                    manager.getMessage(
+                            "reason-player-kill"
+                    );
+
+            key =
+                    "player-kill";
+        }
+
+
+        else if (
+                victim.getType()
+                        == EntityType.VILLAGER
+        ) {
+
+            reason =
+                    manager.getMessage(
+                            "reason-villager-kill"
+                    );
+
+            key =
+                    "villager-kill";
+        }
+
+
+        else if (
+                victim.getType()
+                        == EntityType.IRON_GOLEM
+        ) {
+
+            reason =
+                    manager.getMessage(
+                            "reason-golem-kill"
+                    );
+
+            key =
+                    "golem-kill";
+        }
+
+
+        else if (
+                victim.getType()
+                        == EntityType.WANDERING_TRADER
+        ) {
+
+            reason =
+                    manager.getMessage(
+                            "reason-trader-kill"
+                    );
+
+            key =
+                    "trader-kill";
+        }
+
+
+        if (reason == null) {
+
+            return;
+        }
+
+
+        manager.jailPlayer(
+
+                killer,
+
+                manager.getSentenceTime(
+                        key
+                ),
+
+                reason
+        );
     }
 }
