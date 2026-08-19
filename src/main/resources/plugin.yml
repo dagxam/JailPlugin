@@ -1,28 +1,35 @@
 name: JailPlugin
-version: 1.0
+version: 2.0.0
 main: com.jail.JailPlugin
-api-version: '1.16'
-description: Плагин тюрьмы - автоматическое заключение за убийства
-author: Server
+api-version: '26.2'
+
+description: Система тюрьмы с автоматическими наказаниями, камерами и таймером
+author: dagxam
 
 commands:
+
   prison:
-    description: Управление тюрьмой (админ)
+    description: Управление тюрьмой
     permission: prison.admin
-    usage: /prison <jail|release|list|tp|reload>
+    usage: /prison <jail|release|list|tp|setcell|setrelease|cells|removecell|reload>
+
   jailtime:
-    description: Узнать оставшийся срок заключения
-    aliases: [срок, jail]
-    usage: /jailtime
+    description: Узнать оставшийся срок
+    aliases:
+      - срок
+      - jail
+
   getcoords:
-    description: Показать ваши текущие координаты
+    description: Показать координаты
     permission: prison.admin
     usage: /getcoords
 
 permissions:
+
   prison.admin:
-    description: Доступ к управлению тюрьмой
+    description: Полный доступ к управлению тюрьмой
     default: op
+
   prison.bypass:
-    description: Иммунитет от тюрьмы
+    description: Иммунитет от автоматической тюрьмы
     default: false
