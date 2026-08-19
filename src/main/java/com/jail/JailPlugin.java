@@ -6,6 +6,7 @@ import com.jail.command.PrisonCommand;
 
 import com.jail.listener.ConnectionListener;
 import com.jail.listener.DeathListener;
+import com.jail.listener.EntityJailListener;
 import com.jail.listener.MoveListener;
 import com.jail.listener.RestrictionListener;
 
@@ -23,23 +24,42 @@ import org.bukkit.plugin.java.JavaPlugin;
  * - остановку плагина;
  * - регистрацию команд;
  * - регистрацию событий;
- * - запуск таймера тюрьмы;
- * - загрузку и сохранение заключённых.
+ * - запуск таймеров;
+ * - загрузку и сохранение заключённых;
+ * - управление заключёнными сущностями.
  */
 public final class JailPlugin
         extends JavaPlugin {
 
 
     /**
-     * Основной менеджер тюрьмы.
+     * Основной менеджер тюрьмы игроков.
      */
     private JailManager jailManager;
 
 
     /**
-     * Таймер заключения.
+     * Менеджер заключённых сущностей.
+     */
+    private EntityJailManager entityJailManager;
+
+
+    /**
+     * Таймер заключения игроков.
      */
     private JailTimer jailTimer;
+
+
+    /**
+     * Таймер заключения сущностей.
+     */
+    private EntityJailTimer entityJailTimer;
+
+
+    /**
+     * Listener ручного заключения сущностей.
+     */
+    private EntityJailListener entityJailListener;
 
 
     /**
@@ -73,7 +93,7 @@ public final class JailPlugin
 
 
         /*
-         * Создаём менеджер тюрьмы.
+         * Создаём основной менеджер тюрьмы.
          */
 
         jailManager =
@@ -83,11 +103,38 @@ public final class JailPlugin
 
 
         /*
-         * Загружаем заключённых
-         * из prisoners.yml.
+         * Загружаем заключённых игроков.
          */
 
         jailManager.loadPrisoners();
+
+
+        /*
+         * Создаём менеджер сущностей.
+         */
+
+        entityJailManager =
+                new EntityJailManager(
+                        this
+                );
+
+
+        /*
+         * Загружаем заключённых сущностей.
+         */
+
+        entityJailManager.loadEntities();
+
+
+        /*
+         * Создаём listener сущностей.
+         */
+
+        entityJailListener =
+                new EntityJailListener(
+                        this,
+                        entityJailManager
+                );
 
 
         /*
@@ -98,14 +145,14 @@ public final class JailPlugin
 
 
         /*
-         * Регистрируем обработчики событий.
+         * Регистрируем события.
          */
 
         registerListeners();
 
 
         /*
-         * Запускаем таймер.
+         * Запускаем таймер игроков.
          *
          * 20 тиков = 1 секунда.
          */
@@ -117,6 +164,23 @@ public final class JailPlugin
 
 
         jailTimer.runTaskTimer(
+                this,
+                20L,
+                20L
+        );
+
+
+        /*
+         * Запускаем отдельный таймер сущностей.
+         */
+
+        entityJailTimer =
+                new EntityJailTimer(
+                        entityJailManager
+                );
+
+
+        entityJailTimer.runTaskTimer(
                 this,
                 20L,
                 20L
@@ -149,9 +213,16 @@ public final class JailPlugin
         );
 
         getLogger().info(
-                "Загружено заключённых: " +
+                "Загружено заключённых игроков: " +
                         jailManager
                                 .getAllPrisoners()
+                                .size()
+        );
+
+        getLogger().info(
+                "Загружено заключённых сущностей: " +
+                        entityJailManager
+                                .getAllEntities()
                                 .size()
         );
 
@@ -168,7 +239,7 @@ public final class JailPlugin
     public void onDisable() {
 
         /*
-         * Останавливаем таймер.
+         * Останавливаем таймер игроков.
          */
 
         if (jailTimer != null) {
@@ -180,12 +251,34 @@ public final class JailPlugin
 
 
         /*
-         * Сохраняем заключённых.
+         * Останавливаем таймер сущностей.
+         */
+
+        if (entityJailTimer != null) {
+
+            entityJailTimer.cancel();
+
+            entityJailTimer = null;
+        }
+
+
+        /*
+         * Сохраняем игроков.
          */
 
         if (jailManager != null) {
 
             jailManager.savePrisoners();
+        }
+
+
+        /*
+         * Сохраняем сущности.
+         */
+
+        if (entityJailManager != null) {
+
+            entityJailManager.saveEntities();
         }
 
 
@@ -237,9 +330,9 @@ public final class JailPlugin
     /**
      * Универсальная регистрация команды.
      *
-     * @param name название команды из plugin.yml
+     * @param name название команды
      * @param executor обработчик команды
-     * @param tabComplete нужен ли автодополнитель команд
+     * @param tabComplete нужен ли TabCompleter
      */
     private void registerCommand(
             String name,
@@ -254,8 +347,8 @@ public final class JailPlugin
 
 
         /*
-         * Если команда не указана
-         * в plugin.yml — это ошибка настройки.
+         * Если команда отсутствует
+         * в plugin.yml — останавливаем запуск.
          */
 
         if (command == null) {
@@ -269,12 +362,14 @@ public final class JailPlugin
 
 
         /*
-         * Устанавливаем обработчик команды.
+         * Устанавливаем обработчик.
          */
 
         if (
                 executor
-                        instanceof org.bukkit.command.CommandExecutor commandExecutor
+                        instanceof
+                        org.bukkit.command.CommandExecutor
+                        commandExecutor
         ) {
 
             command.setExecutor(
@@ -284,13 +379,16 @@ public final class JailPlugin
 
 
         /*
-         * Устанавливаем автодополнение.
+         * Устанавливаем TabCompleter.
          */
 
         if (
                 tabComplete
-                        && executor
-                        instanceof org.bukkit.command.TabCompleter tabCompleter
+                        &&
+                executor
+                                instanceof
+                                org.bukkit.command.TabCompleter
+                                tabCompleter
         ) {
 
             command.setTabCompleter(
@@ -301,7 +399,7 @@ public final class JailPlugin
 
 
     /**
-     * Регистрирует все слушатели событий.
+     * Регистрирует обработчики событий.
      */
     private void registerListeners() {
 
@@ -342,7 +440,7 @@ public final class JailPlugin
 
 
         /*
-         * Запрет действий заключённого.
+         * Ограничения для заключённых игроков.
          */
 
         getServer()
@@ -351,14 +449,44 @@ public final class JailPlugin
                         new RestrictionListener(this),
                         this
                 );
+
+
+        /*
+         * Ручное заключение сущностей.
+         */
+
+        getServer()
+                .getPluginManager()
+                .registerEvents(
+                        entityJailListener,
+                        this
+                );
     }
 
 
     /**
-     * Возвращает менеджер тюрьмы.
+     * Возвращает менеджер игроков.
      */
     public JailManager getJailManager() {
 
         return jailManager;
+    }
+
+
+    /**
+     * Возвращает менеджер сущностей.
+     */
+    public EntityJailManager getEntityJailManager() {
+
+        return entityJailManager;
+    }
+
+
+    /**
+     * Возвращает listener сущностей.
+     */
+    public EntityJailListener getEntityJailListener() {
+
+        return entityJailListener;
     }
 }
