@@ -13,9 +13,25 @@ import org.bukkit.event.Listener;
 
 import org.bukkit.event.entity.EntityDeathEvent;
 
+
+/**
+ * Обработчик убийств.
+ *
+ * Автоматически отправляет игрока в тюрьму,
+ * если он убил:
+ *
+ * - другого игрока;
+ * - жителя;
+ * - железного голема;
+ * - странствующего торговца.
+ */
 public final class DeathListener
         implements Listener {
 
+
+    /**
+     * Главный класс плагина.
+     */
     private final JailPlugin plugin;
 
 
@@ -27,6 +43,9 @@ public final class DeathListener
     }
 
 
+    /**
+     * Обрабатывает смерть сущности.
+     */
     @EventHandler(
             priority = EventPriority.MONITOR,
             ignoreCancelled = true
@@ -39,15 +58,29 @@ public final class DeathListener
                 event.getEntity();
 
 
+        /*
+         * Получаем игрока, который убил сущность.
+         */
+
         Player killer =
                 victim.getKiller();
 
+
+        /*
+         * Если убийцы нет,
+         * наказание не применяется.
+         */
 
         if (killer == null) {
 
             return;
         }
 
+
+        /*
+         * Игрок с правом prison.bypass
+         * не получает автоматическое наказание.
+         */
 
         if (
                 killer.hasPermission(
@@ -65,10 +98,21 @@ public final class DeathListener
 
         String reason = null;
 
-        String key = null;
+        String sentenceKey = null;
 
 
-        if (victim instanceof Player) {
+        /*
+         * Убийство другого игрока.
+         */
+
+        if (
+                victim instanceof Player
+        ) {
+
+            /*
+             * Самоубийство не считается убийством
+             * другого игрока.
+             */
 
             if (
                     killer.getUniqueId()
@@ -86,14 +130,20 @@ public final class DeathListener
                             "reason-player-kill"
                     );
 
-            key =
+
+            sentenceKey =
                     "player-kill";
         }
 
 
+        /*
+         * Убийство жителя.
+         */
+
         else if (
                 victim.getType()
-                        == EntityType.VILLAGER
+                        ==
+                        EntityType.VILLAGER
         ) {
 
             reason =
@@ -101,14 +151,20 @@ public final class DeathListener
                             "reason-villager-kill"
                     );
 
-            key =
+
+            sentenceKey =
                     "villager-kill";
         }
 
 
+        /*
+         * Убийство железного голема.
+         */
+
         else if (
                 victim.getType()
-                        == EntityType.IRON_GOLEM
+                        ==
+                        EntityType.IRON_GOLEM
         ) {
 
             reason =
@@ -116,14 +172,20 @@ public final class DeathListener
                             "reason-golem-kill"
                     );
 
-            key =
+
+            sentenceKey =
                     "golem-kill";
         }
 
 
+        /*
+         * Убийство странствующего торговца.
+         */
+
         else if (
                 victim.getType()
-                        == EntityType.WANDERING_TRADER
+                        ==
+                        EntityType.WANDERING_TRADER
         ) {
 
             reason =
@@ -131,24 +193,47 @@ public final class DeathListener
                             "reason-trader-kill"
                     );
 
-            key =
+
+            sentenceKey =
                     "trader-kill";
         }
 
 
-        if (reason == null) {
+        /*
+         * Если сущность не входит
+         * в список наказаний,
+         * ничего не делаем.
+         */
+
+        if (
+                reason == null
+                        ||
+                sentenceKey == null
+        ) {
 
             return;
         }
 
 
+        /*
+         * Получаем срок из config.yml.
+         */
+
+        int seconds =
+                manager.getSentenceTime(
+                        sentenceKey
+                );
+
+
+        /*
+         * Отправляем игрока в тюрьму.
+         */
+
         manager.jailPlayer(
 
                 killer,
 
-                manager.getSentenceTime(
-                        key
-                ),
+                seconds,
 
                 reason
         );
