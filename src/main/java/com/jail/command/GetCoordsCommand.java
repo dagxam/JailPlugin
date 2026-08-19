@@ -8,9 +8,21 @@ import org.bukkit.command.CommandSender;
 
 import org.bukkit.entity.Player;
 
+
+/**
+ * Команда просмотра текущих координат игрока.
+ *
+ * Использование:
+ *
+ * /getcoords
+ */
 public final class GetCoordsCommand
         implements CommandExecutor {
 
+
+    /**
+     * Обработка команды /getcoords.
+     */
     @Override
     public boolean onCommand(
             CommandSender sender,
@@ -19,59 +31,169 @@ public final class GetCoordsCommand
             String[] args
     ) {
 
+        /*
+         * Команда доступна только игрокам.
+         */
+
         if (
                 !(sender instanceof Player player)
         ) {
 
             sender.sendMessage(
-                    "Только для игроков."
+                    JailManager.component(
+                            "&cЭта команда доступна только игрокам."
+                    )
             );
 
             return true;
         }
 
 
+        /*
+         * Получаем данные игрока.
+         */
+
+        String world =
+                player
+                        .getWorld()
+                        .getName();
+
+
+        double x =
+                player.getX();
+
+
+        double y =
+                player.getY();
+
+
+        double z =
+                player.getZ();
+
+
+        float yaw =
+                player.getYaw();
+
+
+        float pitch =
+                player.getPitch();
+
+
+        /*
+         * Заголовок.
+         */
+
+        player.sendMessage("");
+
         player.sendMessage(
-                JailManager.colorize(
-                        "&6Мир: &f"
-                                + player
-                                .getWorld()
-                                .getName()
+                JailManager.component(
+                        "&6&l📍 Ваши координаты"
+                )
+        );
+
+        player.sendMessage("");
+
+
+        /*
+         * Мир.
+         */
+
+        player.sendMessage(
+
+                JailManager.component(
+
+                        "&eМир: &f" +
+                                world
                 )
         );
 
 
+        /*
+         * Координата X.
+         */
+
         player.sendMessage(
-                JailManager.colorize(
-                        "&6X: &f"
-                                + String.format(
-                                "%.2f",
-                                player.getX()
-                        )
+
+                JailManager.component(
+
+                        "&eX: &f" +
+                                String.format(
+                                        "%.2f",
+                                        x
+                                )
                 )
         );
 
 
+        /*
+         * Координата Y.
+         */
+
         player.sendMessage(
-                JailManager.colorize(
-                        "&6Y: &f"
-                                + String.format(
-                                "%.2f",
-                                player.getY()
-                        )
+
+                JailManager.component(
+
+                        "&eY: &f" +
+                                String.format(
+                                        "%.2f",
+                                        y
+                                )
                 )
         );
 
 
+        /*
+         * Координата Z.
+         */
+
         player.sendMessage(
-                JailManager.colorize(
-                        "&6Z: &f"
-                                + String.format(
-                                "%.2f",
-                                player.getZ()
-                        )
+
+                JailManager.component(
+
+                        "&eZ: &f" +
+                                String.format(
+                                        "%.2f",
+                                        z
+                                )
                 )
         );
+
+
+        /*
+         * Направление взгляда.
+         */
+
+        player.sendMessage(
+
+                JailManager.component(
+
+                        "&eПоворот: &f" +
+                                String.format(
+                                        "%.2f",
+                                        yaw
+                                )
+                )
+        );
+
+
+        /*
+         * Вертикальный угол взгляда.
+         */
+
+        player.sendMessage(
+
+                JailManager.component(
+
+                        "&eНаклон: &f" +
+                                String.format(
+                                        "%.2f",
+                                        pitch
+                                )
+                )
+        );
+
+
+        player.sendMessage("");
 
 
         return true;
