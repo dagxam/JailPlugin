@@ -40,8 +40,11 @@ public final class GetCoordsCommand
         ) {
 
             sender.sendMessage(
+
                     JailManager.component(
-                            "&cЭта команда доступна только игрокам."
+
+                            "Эта команда доступна только игрокам."
+
                     )
             );
 
