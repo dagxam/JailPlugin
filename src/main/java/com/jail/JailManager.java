@@ -809,7 +809,7 @@ public final class JailManager {
                                 .replace(
                                         "%time%",
                                         formatTimeWords(
-                                                seconds
+                                                newTime
                                         )
                                 )
                 )
