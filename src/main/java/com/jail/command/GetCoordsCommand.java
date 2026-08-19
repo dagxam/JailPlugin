@@ -1,6 +1,7 @@
 package com.jail.command;
 
 import com.jail.JailManager;
+import com.jail.JailPlugin;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -18,6 +19,25 @@ import org.bukkit.entity.Player;
  */
 public final class GetCoordsCommand
         implements CommandExecutor {
+
+
+    /**
+     * Главный класс плагина.
+     */
+    private final JailPlugin plugin;
+
+
+    /**
+     * Создаёт обработчик команды.
+     *
+     * @param plugin главный класс плагина
+     */
+    public GetCoordsCommand(
+            JailPlugin plugin
+    ) {
+
+        this.plugin = plugin;
+    }
 
 
     /**
@@ -43,8 +63,11 @@ public final class GetCoordsCommand
 
                     JailManager.component(
 
-                            "Эта команда доступна только игрокам."
-
+                            plugin
+                                    .getJailManager()
+                                    .getMessage(
+                                            "player-only"
+                                    )
                     )
             );
 
