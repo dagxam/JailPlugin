@@ -18,6 +18,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -121,13 +122,88 @@ public final class EntityJailListener implements Listener {
 
         if (!(entity instanceof LivingEntity)) {
             player.sendMessage(JailManager.component(
-                    "&cЭту сущность нельзя заключить в тюрьму."
+                    "&cЭта сущность не является живой."
+            ));
+            return;
+        }
+
+        /*
+         * Любая LivingEntity разрешена.
+         * В том числе водные существа.
+         */
+        openTimeMenu(player, entity);
+    }
+
+    /**
+     * ЛКМ по живой сущности.
+     *
+     * Используется дополнительно к ПКМ, чтобы администратор
+     * мог выбрать любую живую сущность, включая водных мобов.
+     *
+     * Урон по сущности отменяется.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityLeftClick(
+            EntityDamageByEntityEvent event
+    ) {
+        if (!(event.getDamager() instanceof Player player)) {
+            return;
+        }
+
+        if (!isSelecting(player)) {
+            return;
+        }
+
+        if (!player.hasPermission("prison.entityjail")) {
+            event.setCancelled(true);
+            stopSelection(player);
+            return;
+        }
+
+        Entity entity = event.getEntity();
+
+        /*
+         * В режиме выбора сущности удар никогда
+         * не должен наносить реальный урон.
+         */
+        event.setCancelled(true);
+
+        /*
+         * Игроков ручной системой не заключаем.
+         */
+        if (entity instanceof Player) {
+            player.sendMessage(JailManager.component(
+                    "&cИгроков через ручное заключение сущностей сажать нельзя."
+            ));
+            return;
+        }
+
+        /*
+         * Любая живая сущность разрешена.
+         *
+         * Это включает:
+         * - наземных мобов;
+         * - водных мобов;
+         * - рыб;
+         * - аксолотлей;
+         * - дельфинов;
+         * - черепах;
+         * - лягушек;
+         * - лошадей;
+         * - жителей;
+         * - големов;
+         * - и другие LivingEntity.
+         */
+        if (!(entity instanceof LivingEntity)) {
+            player.sendMessage(JailManager.component(
+                    "&cЭта сущность не является живой."
             ));
             return;
         }
 
         openTimeMenu(player, entity);
     }
+
 
     private void openTimeMenu(Player player, Entity entity) {
         Inventory inventory = Bukkit.createInventory(
