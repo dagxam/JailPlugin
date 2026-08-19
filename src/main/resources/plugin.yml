@@ -1,35 +1,43 @@
+# Основное описание плагина.
+# Названия команд оставлены на английском для удобства.
+
 name: JailPlugin
 version: 2.0.0
 main: com.jail.JailPlugin
 api-version: '26.2'
 
-description: Система тюрьмы с автоматическими наказаниями, камерами и таймером
+description: Система тюрьмы с камерами, сроками и автоматическими наказаниями
 author: dagxam
 
 commands:
 
+  # Основная команда управления тюрьмой.
   prison:
-    description: Управление тюрьмой
+    description: Управление системой тюрьмы
     permission: prison.admin
     usage: /prison <jail|release|list|tp|setcell|setrelease|cells|removecell|reload>
 
+  # Просмотр оставшегося срока.
   jailtime:
-    description: Узнать оставшийся срок
+    description: Показать оставшееся время заключения
     aliases:
       - срок
       - jail
 
+  # Просмотр координат.
   getcoords:
-    description: Показать координаты
+    description: Показать текущие координаты
     permission: prison.admin
     usage: /getcoords
 
 permissions:
 
+  # Полный доступ администратора.
   prison.admin:
-    description: Полный доступ к управлению тюрьмой
+    description: Полный доступ к управлению системой тюрьмы
     default: op
 
+  # Защита от автоматического заключения.
   prison.bypass:
-    description: Иммунитет от автоматической тюрьмы
+    description: Защита игрока от автоматического заключения
     default: false
