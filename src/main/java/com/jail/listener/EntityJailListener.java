@@ -34,8 +34,9 @@ import java.util.UUID;
 /**
  * Ручное заключение сущностей администратором.
  *
- * Игроки этой системой не заключаются.
- * Игроки продолжают использовать существующую систему JailManager.
+ * Игроки тоже могут быть выбраны через ПКМ/ЛКМ.
+ * Для игроков используется существующий JailManager.
+ * Остальные LivingEntity используют EntityJailManager.
  */
 public final class EntityJailListener implements Listener {
 
@@ -75,10 +76,10 @@ public final class EntityJailListener implements Listener {
                 "&a✓ Режим выбора сущности включён."
         ));
         player.sendMessage(JailManager.component(
-                "&7Нажмите &fПКМ &7по живой сущности."
+                "&7Нажмите &fПКМ &7по игроку или живой сущности."
         ));
         player.sendMessage(JailManager.component(
-                "&7Игроки через эту систему не заключаются."
+                "&7Также можно использовать &fЛКМ &7по живой сущности."
         ));
     }
 
@@ -113,13 +114,6 @@ public final class EntityJailListener implements Listener {
         Entity entity = event.getRightClicked();
         event.setCancelled(true);
 
-        if (entity instanceof Player) {
-            player.sendMessage(JailManager.component(
-                    "&cИгроков через ручное заключение сущностей сажать нельзя."
-            ));
-            return;
-        }
-
         if (!(entity instanceof LivingEntity)) {
             player.sendMessage(JailManager.component(
                     "&cЭта сущность не является живой."
@@ -128,8 +122,17 @@ public final class EntityJailListener implements Listener {
         }
 
         /*
-         * Любая LivingEntity разрешена.
-         * В том числе водные существа.
+         * Разрешены:
+         *
+         * - игроки;
+         * - любые LivingEntity;
+         * - водные существа;
+         * - летающие существа;
+         * - животные;
+         * - монстры.
+         *
+         * Игроки после выбора срока будут переданы
+         * в обычный JailManager.
          */
         openTimeMenu(player, entity);
     }
@@ -384,6 +387,40 @@ public final class EntityJailListener implements Listener {
             return;
         }
 
+        /*
+         * Игроки используют существующую систему JailManager.
+         *
+         * ВАЖНО:
+         * jailPlayer() уже сам выбирает камеру,
+         * телепортирует игрока, сохраняет срок
+         * и отправляет ему стандартные сообщения.
+         */
+        if (entity instanceof Player targetPlayer) {
+
+            plugin.getJailManager().jailPlayer(
+                    targetPlayer,
+                    seconds,
+                    "ручное заключение администратором"
+            );
+
+            selecting.remove(player.getUniqueId());
+            menuTargets.remove(player.getUniqueId());
+
+            player.sendMessage(JailManager.component(
+                    "&a✓ Игрок &f" + targetPlayer.getName()
+                            + " &aзаключён на &f"
+                            + plugin.getJailManager().formatTimeWords(seconds)
+                            + "&a."
+            ));
+
+            return;
+        }
+
+
+        /*
+         * Все остальные живые сущности
+         * используют отдельный EntityJailManager.
+         */
         if (!entityJailManager.jailEntity(entity, seconds, cell)) {
             player.sendMessage(JailManager.component(
                     "&cНе удалось заключить сущность в тюрьму."
