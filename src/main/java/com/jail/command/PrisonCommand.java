@@ -208,6 +208,33 @@ public final class PrisonCommand
             }
 
 
+            case "entityjail" -> {
+
+                if (
+                        !(sender instanceof Player player)
+                ) {
+
+                    sender.sendMessage(
+
+                            JailManager.component(
+
+                                    manager.getMessage(
+                                            "player-only"
+                                    )
+                            )
+                    );
+
+                    return true;
+                }
+
+                plugin
+                        .getEntityJailListener()
+                        .startSelection(
+                                player
+                        );
+            }
+
+
             default ->
 
                     help(
@@ -1146,6 +1173,17 @@ public final class PrisonCommand
         );
 
 
+        sender.sendMessage(
+
+                JailManager.component(
+
+                        "&e/prison entityjail"
+                                +
+                                " &7— выбрать сущность и заключить её в тюрьму"
+                )
+        );
+
+
         sender.sendMessage("");
     }
 
@@ -1179,7 +1217,8 @@ public final class PrisonCommand
                             "setrelease",
                             "cells",
                             "removecell",
-                            "reload"
+                            "reload",
+                            "entityjail"
 
                     ),
 
