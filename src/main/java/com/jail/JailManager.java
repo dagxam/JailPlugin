@@ -178,12 +178,7 @@ public final class JailManager {
             if (cellId != null) {
                 data.set(path + ".cell", cellId);
             } else {
-                data.set(path + ".world", cell.getWorld().getName());
-                data.set(path + ".x", cell.getX());
-                data.set(path + ".y", cell.getY());
-                data.set(path + ".z", cell.getZ());
-                data.set(path + ".yaw", cell.getYaw());
-                data.set(path + ".pitch", cell.getPitch());
+                writeLocation(data, path, cell);
             }
         }
 
@@ -214,13 +209,13 @@ public final class JailManager {
         return null;
     }
 
-    public void jailPlayer(Player player, int seconds, String reason) {
+    public boolean jailPlayer(Player player, int seconds, String reason) {
         if (player == null || cells.isEmpty()) {
             if (player != null) {
                 player.sendMessage(component(getMessage("no-cells")));
                 player.sendMessage(component(getMessage("no-cells-hint")));
             }
-            return;
+            return false;
         }
 
         UUID uuid = player.getUniqueId();
@@ -228,7 +223,7 @@ public final class JailManager {
         Location cell = getRandomCell();
 
         if (cell == null) {
-            return;
+            return false;
         }
 
         prisonerTimes.put(uuid, newTime);
@@ -262,6 +257,7 @@ public final class JailManager {
         }
 
         savePrisoners();
+        return true;
     }
 
     public void releasePlayer(UUID uuid) {
@@ -381,9 +377,9 @@ public final class JailManager {
     }
 
     /** Добавляет или обновляет камеру и сразу сохраняет её в config.yml. */
-    public void setCell(String id, Location location) {
+    public boolean setCell(String id, Location location) {
         if (id == null || id.isBlank() || location == null || location.getWorld() == null) {
-            return;
+            return false;
         }
 
         String normalizedId = id.trim();
@@ -394,6 +390,7 @@ public final class JailManager {
         String path = "cells." + normalizedId;
         writeLocation(config, path, stored);
         plugin.saveConfig();
+        return true;
     }
 
     /** Удаляет камеру из памяти и config.yml. */
