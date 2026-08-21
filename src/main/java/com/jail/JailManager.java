@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -41,7 +42,7 @@ public final class JailManager {
 
     private Location releaseLocation;
     private double cellRadius;
-    private List<String> allowedCommands = new ArrayList<>();
+    private List<String> allowedCommands = List.of();
     private boolean broadcastArrests;
 
     private final Random random = new Random();
@@ -352,7 +353,7 @@ public final class JailManager {
     }
 
     public List<String> getAllowedCommands() {
-        return Collections.unmodifiableList(allowedCommands);
+        return allowedCommands;
     }
 
     public Location getRandomCell() {
@@ -360,8 +361,15 @@ public final class JailManager {
             return null;
         }
 
-        List<Location> values = new ArrayList<>(cells.values());
-        return values.get(random.nextInt(values.size())).clone();
+        int index = random.nextInt(cells.size());
+        int current = 0;
+        for (Location location : cells.values()) {
+            if (current++ == index) {
+                return location.clone();
+            }
+        }
+
+        return null;
     }
 
     public int getCellCount() {
@@ -370,6 +378,58 @@ public final class JailManager {
 
     public Set<String> getCellIds() {
         return Collections.unmodifiableSet(cells.keySet());
+    }
+
+    /** Добавляет или обновляет камеру и сразу сохраняет её в config.yml. */
+    public void setCell(String id, Location location) {
+        if (id == null || id.isBlank() || location == null || location.getWorld() == null) {
+            return;
+        }
+
+        String normalizedId = id.trim();
+        Location stored = location.clone();
+        cells.put(normalizedId, stored);
+
+        FileConfiguration config = plugin.getConfig();
+        String path = "cells." + normalizedId;
+        writeLocation(config, path, stored);
+        plugin.saveConfig();
+    }
+
+    /** Удаляет камеру из памяти и config.yml. */
+    public boolean removeCell(String id) {
+        if (id == null) {
+            return false;
+        }
+
+        Location removed = cells.remove(id);
+        if (removed == null) {
+            return false;
+        }
+
+        plugin.getConfig().set("cells." + id, null);
+        plugin.saveConfig();
+        return true;
+    }
+
+    /** Устанавливает точку освобождения и сразу сохраняет её в config.yml. */
+    public void setRelease(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+
+        releaseLocation = location.clone();
+        writeLocation(plugin.getConfig(), "release", releaseLocation);
+        plugin.saveConfig();
+    }
+
+    private void writeLocation(FileConfiguration config, String path, Location location) {
+        config.set(path + ".world", location.getWorld().getName());
+        config.set(path + ".x", location.getX());
+        config.set(path + ".y", location.getY());
+        config.set(path + ".z", location.getZ());
+        config.set(path + ".yaw", location.getYaw());
+        config.set(path + ".pitch", location.getPitch());
     }
 
     public Location getReleaseLocation() {
